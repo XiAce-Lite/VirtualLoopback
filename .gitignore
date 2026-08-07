@@ -1,0 +1,41 @@
+# JUCE / Visual Studio
+.vs/
+**/x64/
+**/Win32/
+*.user
+*.suo
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.opendb
+*.pdb
+*.ilk
+*.obj
+*.o
+*.exp
+*.lib
+*.dll
+*.exe
+!JuceLibraryCode/**
+
+# Build outputs (do not track)
+Builds/
+
+# Distribution binaries in /Release are tracked
+*.vst3
+!/Release/
+!/Release/**
+!/Release/**/*.vst3
+
+**/Intermediates.noindex/
+.DS_Store
+.idea/
+.vscode/
+cmake-build*/
+/build/
+
+# Keep project files
+!*.sln
+!*.vcxproj
+!*.vcxproj.filters
+!*.jucer
