@@ -6,6 +6,8 @@ Windows の PC 再生音（ブラウザ・メディアプレイヤーなど）�
 
 > **対応 OS:** Windows のみ（Mac 非対応）
 
+[English README](README.en.md)
+
 ---
 
 ## 何ができるか
