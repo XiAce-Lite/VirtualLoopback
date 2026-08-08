@@ -31,8 +31,8 @@ For pre-made static files, use SYNCROOM’s built-in file playback. This plugin 
 No build step is required. Use the files in the repository **`Release`** folder.
 
 1. Get [`Release/VirtualLoopback.vst3`](Release/VirtualLoopback.vst3)  
-   (If you download a zip from GitHub Releases, extract it first.)
-2. Copy it to either:
+   (If you download a zip from GitHub Releases, extract it and use the single **`VirtualLoopback.vst3` file** — not a folder-style VST3 bundle.)
+2. Copy that `.vst3` file to either:
    - `C:\Program Files\Common Files\VST3\`
    - or your DAW’s VST3 folder
 3. Rescan plugins in your DAW

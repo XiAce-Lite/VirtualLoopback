@@ -31,8 +31,8 @@ SYNCROOM でセッションするとき、マイク演奏と同時に「PC で�
 ビルド不要です。リポジトリの **`Release`** フォルダにある配布物を使ってください。
 
 1. [`Release/VirtualLoopback.vst3`](Release/VirtualLoopback.vst3) を入手する  
-   （GitHub の Release から zip を落とす場合は展開する）
-2. 次のどちらかにコピーする
+   （GitHub の Release から zip を落とす場合は展開し、中の **`VirtualLoopback.vst3` ファイル単体** を使う。フォルダ構成のバンドルではありません）
+2. その `.vst3` ファイルを次のどちらかにコピーする
    - `C:\Program Files\Common Files\VST3\`
    - または DAW が参照している VST3 フォルダ
 3. DAW でプラグインを再スキャンする
