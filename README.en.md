@@ -32,11 +32,12 @@ No build step is required. Use the files in the repository **`Release`** folder.
 
 1. Get [`Release/VirtualLoopback.vst3`](Release/VirtualLoopback.vst3)  
    (If you download a zip from GitHub Releases, extract it and use the single **`VirtualLoopback.vst3` file** — not a folder-style VST3 bundle.)
-2. Copy that `.vst3` file to either:
-   - `C:\Program Files\Common Files\VST3\`
-   - or your DAW’s VST3 folder
-3. Rescan plugins in your DAW
-4. Confirm **XiAceLite** / **VirtualLoopback** appears
+2. Copy that `.vst3` file to **`C:\Program Files\Common Files\VST3\`**  
+   (the standard VST3 install location; if your system drive is not C:, use `%CommonProgramFiles%\VST3`)
+3. **If that folder does not exist**, create the `VST3` folder at the path above, then copy the file  
+   (on PCs that have never had a third-party VST3 installed, this folder may be missing from the start. Administrator privileges may be required.)
+4. Rescan plugins in your DAW (for Cubase, restarting the app also works)
+5. Confirm **XiAceLite** / **VirtualLoopback** appears
 
 ---
 
@@ -56,9 +57,23 @@ It may not appear in FX / Insert lists. Load it as a **synth / instrument** on a
 
 ### Cubase
 
+#### Install location (Cubase users)
+
+In Cubase, **do not** use these locations for VirtualLoopback:
+
+- `C:\Program Files\Steinberg\VSTPlugins\` — **for VST2** (the folder shown in the VST 2 Plug-in Path Settings in the Plug-in Manager)
+- `C:\Program Files\Steinberg\Cubase 14\VST3\` — **for bundled Cubase plugins** (some users report third-party plugins working here, but it is not the official location for third-party VST3)
+
+Put VirtualLoopback in **`C:\Program Files\Common Files\VST3\`**.  
+If that folder is missing, **create it manually**. Cubase does not let you add custom VST3 scan paths, so this is effectively the only correct location.
+
+If the plugin is not recognized, open **Studio → VST Plug-in Manager → Plug-in Report** and confirm VirtualLoopback’s **Path** points to `Common Files\VST3`.
+
+#### Adding it to a track
+
 1. **Add an Instrument track** (Project → Add Track → Instrument)
 2. Select **VirtualLoopback**  
-   (around the Instrument / Synth category)
+   (around the Instrument / Synth category; it will not appear in the FX list)
 3. Enable monitor (or input listening) and confirm audio / meter activity
 4. Optionally route to a group/master and mix with the SYNCROOM bridge VST downstream
 

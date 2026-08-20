@@ -32,11 +32,12 @@ SYNCROOM でセッションするとき、マイク演奏と同時に「PC で�
 
 1. [`Release/VirtualLoopback.vst3`](Release/VirtualLoopback.vst3) を入手する  
    （GitHub の Release から zip を落とす場合は展開し、中の **`VirtualLoopback.vst3` ファイル単体** を使う。フォルダ構成のバンドルではありません）
-2. その `.vst3` ファイルを次のどちらかにコピーする
-   - `C:\Program Files\Common Files\VST3\`
-   - または DAW が参照している VST3 フォルダ
-3. DAW でプラグインを再スキャンする
-4. メーカー **XiAceLite** / プラグイン名 **VirtualLoopback** が出ることを確認する
+2. その `.vst3` ファイルを **`C:\Program Files\Common Files\VST3\`** にコピーする  
+   （VST3 の標準インストール先。システムドライブが C: でない場合は `%CommonProgramFiles%\VST3`）
+3. **フォルダが無い場合**は、上記パスで `VST3` フォルダを自分で作成してからコピーする  
+   （サードパーティの VST3 を一度も入れていない PC では、最初から存在しないことがあります。管理者権限が必要な場合があります）
+4. DAW でプラグインを再スキャンする（Cubase の場合は再起動でも可）
+5. メーカー **XiAceLite** / プラグイン名 **VirtualLoopback** が出ることを確認する
 
 ---
 
@@ -56,9 +57,23 @@ VirtualLoopback は **音源（Instrument / プラグインシンセ）** とし
 
 ### Cubase の場合
 
+#### インストール先（Cubase ユーザー向け）
+
+Cubase では、次の場所を **VirtualLoopback の置き場所として使わないでください**。
+
+- `C:\Program Files\Steinberg\VSTPlugins\` … **VST2 用**（Plugin Manager の VST2 パス設定に出てくるフォルダ）
+- `C:\Program Files\Steinberg\Cubase 14\VST3\` … **Cubase 同梱プラグイン用**（ここに置いても動く報告はありますが、サードパーティ VST3 の正式な置き場所ではありません）
+
+VirtualLoopback は **`C:\Program Files\Common Files\VST3\`** に置いてください。  
+このフォルダが無ければ **手動で作成** します。Cubase は VST3 の検索パスをユーザーが追加できないため、ここが実質唯一の正解です。
+
+うまく認識されないときは、**Studio → VST Plug-in Manager → Plug-in Report** で VirtualLoopback の **Path** が `Common Files\VST3` になっているか確認してください。
+
+#### トラックへの挿し方
+
 1. **インストゥルメントトラックを追加**（プロジェクト → トラックを追加 → インストゥルメント）
 2. プラグイン選択で **VirtualLoopback** を選ぶ  
-   （カテゴリは Instrument / Synth 付近）
+   （カテゴリは Instrument / Synth 付近。FX 一覧には出ません）
 3. トラックのモニタ（または入力の聞き取り）をオンにし、音が出る／メーターが振れることを確認
 4. 必要なら出力をグループチャンネルやマスターへ送り、後段で SYNCROOM 用 VST と混ぜる
 
