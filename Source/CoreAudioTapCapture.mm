@@ -1,18 +1,20 @@
+#if defined(__APPLE__)
+ #import <Foundation/Foundation.h>
+ #import <CoreAudio/CoreAudio.h>
+ #include <unistd.h>
+
+ #ifndef MAC_OS_VERSION_14_2
+  #define MAC_OS_VERSION_14_2 140200
+ #endif
+
+ #if __MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_VERSION_14_2
+  #import <CoreAudio/CATapDescription.h>
+ #endif
+#endif
+
 #include "CoreAudioTapCapture.h"
 
 #if JUCE_MAC
-
-#import <Foundation/Foundation.h>
-#import <CoreAudio/CoreAudio.h>
-#include <unistd.h>
-
-#ifndef MAC_OS_VERSION_14_2
- #define MAC_OS_VERSION_14_2 140200
-#endif
-
-#if __MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_VERSION_14_2
- #import <CoreAudio/CATapDescription.h>
-#endif
 
 namespace
 {
