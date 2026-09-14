@@ -9,6 +9,8 @@
 
  #if __MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_VERSION_14_2
   #import <CoreAudio/CATapDescription.h>
+  extern "C" OSStatus AudioHardwareCreateProcessTap (CATapDescription* inDescription, AudioObjectID* outTapID);
+  extern "C" OSStatus AudioHardwareDestroyProcessTap (AudioObjectID inTapID);
  #endif
 #endif
 
@@ -242,7 +244,7 @@ void CoreAudioTapCapture::processTapInput (const void* inputPtr)
 
     if (inputData->mNumberBuffers == 1)
     {
-        const AudioBuffer& buf = inputData->mBuffers[0];
+        const auto& buf = inputData->mBuffers[0];
         if (buf.mData == nullptr || buf.mDataByteSize == 0)
             return;
 
@@ -252,7 +254,7 @@ void CoreAudioTapCapture::processTapInput (const void* inputPtr)
         return;
     }
 
-    const AudioBuffer& first = inputData->mBuffers[0];
+    const auto& first = inputData->mBuffers[0];
     if (first.mData == nullptr || first.mDataByteSize == 0)
         return;
 
@@ -455,14 +457,14 @@ bool CoreAudioTapCapture::openTap (const juce::String& deviceId)
                                       getpid(), [[NSUUID UUID] UUIDString]];
 
             NSDictionary* aggregateDesc = @{
-                (__bridge NSString*) kAudioAggregateDeviceNameKey: @"VirtualLoopback Tap Aggregate",
-                (__bridge NSString*) kAudioAggregateDeviceUIDKey: aggregateUID,
-                (__bridge NSString*) kAudioAggregateDeviceIsPrivateKey: @YES,
-                (__bridge NSString*) kAudioAggregateDeviceTapAutoStartKey: @YES,
-                (__bridge NSString*) kAudioAggregateDeviceTapListKey: @[
+                @kAudioAggregateDeviceNameKey: @"VirtualLoopback Tap Aggregate",
+                @kAudioAggregateDeviceUIDKey: aggregateUID,
+                @kAudioAggregateDeviceIsPrivateKey: @YES,
+                @kAudioAggregateDeviceTapAutoStartKey: @YES,
+                @kAudioAggregateDeviceTapListKey: @[
                     @{
-                        (__bridge NSString*) kAudioSubTapUIDKey: tapUID,
-                        (__bridge NSString*) kAudioSubTapDriftCompensationKey: @YES
+                        @kAudioSubTapUIDKey: tapUID,
+                        @kAudioSubTapDriftCompensationKey: @YES
                     }
                 ]
             };
