@@ -1,0 +1,68 @@
+name: macOS plugin zip
+
+on:
+  push:
+    branches: [feature/macos-coreaudio]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Xcode \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=14.2
+
+      - name: Build VST3 and AU
+        run: |
+          cmake --build build --config Release --target VirtualLoopback_VST3 VirtualLoopback_AU --parallel 4
+
+      - name: Package zip
+        run: |
+          set -euo pipefail
+          VST3=$(find build -type d -name 'VirtualLoopback.vst3' | head -n 1)
+          AU=$(find build -type d -name 'VirtualLoopback.component' | head -n 1)
+          echo "VST3=$VST3"
+          echo "AU=$AU"
+          test -n "$VST3"
+          test -n "$AU"
+          lipo -info "$VST3/Contents/MacOS/"* || true
+          lipo -info "$AU/Contents/MacOS/"* || true
+
+          STAGE=dist/VirtualLoopback-macos
+          rm -rf dist
+          mkdir -p "$STAGE"
+          ditto "$VST3" "$STAGE/VirtualLoopback.vst3"
+          ditto "$AU" "$STAGE/VirtualLoopback.component"
+          cp packaging/README-mac.txt "$STAGE/README-mac.txt"
+
+          codesign --force --deep --sign - --timestamp=none "$STAGE/VirtualLoopback.vst3" || true
+          codesign --force --deep --sign - --timestamp=none "$STAGE/VirtualLoopback.component" || true
+
+          ditto -c -k --keepParent "$STAGE" VirtualLoopback-macos-universal.zip
+          ls -lh VirtualLoopback-macos-universal.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VirtualLoopback-macos-universal
+          path: VirtualLoopback-macos-universal.zip
+          if-no-files-found: error
+
+      - name: Attach zip to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload v1.1.0-mac VirtualLoopback-macos-universal.zip --clobber
+          gh release edit v1.1.0-mac --notes-file packaging/release-notes-mac.md

@@ -45,15 +45,16 @@ No build step is required. Use the files in the repository **`Release`** folder.
 
 ### Mac (VST3 / AU)
 
-The Mac build is a **bundle** (not a single-file `.vst3` like Windows). Use the Mac zip from GitHub Releases.
+The Mac build is a **bundle**. Use **`VirtualLoopback-macos-universal.zip`** from GitHub Releases.
 
-1. Copy `VirtualLoopback.vst3` to **`~/Library/Audio/Plug-Ins/VST3/`**  
+1. Unzip, then clear quarantine: `xattr -cr VirtualLoopback.vst3` and `xattr -cr VirtualLoopback.component`
+2. Copy `VirtualLoopback.vst3` to **`~/Library/Audio/Plug-Ins/VST3/`**  
    (Cubase, SYNCROOM VST link, and other VST3 hosts)
-2. Copy `VirtualLoopback.component` to **`~/Library/Audio/Plug-Ins/Components/`**  
+3. Copy `VirtualLoopback.component` to **`~/Library/Audio/Plug-Ins/Components/`**  
    (Logic / GarageBand and other AU hosts)
-3. Create those folders if they do not exist
-4. Rescan plugins in your DAW
-5. On first capture, grant **Screen & System Audio Recording** to **the DAW** (the host, not the plugin). If no prompt appears, add the DAW manually in System Settings
+4. Create those folders if they do not exist
+5. Rescan plugins in your DAW
+6. On first capture, grant **Screen & System Audio Recording** to **the DAW** (the host, not the plugin). If no prompt appears, add the DAW manually in System Settings
 
 BlackHole and Loopback are not required. This plugin does not install a virtual audio device.
 
