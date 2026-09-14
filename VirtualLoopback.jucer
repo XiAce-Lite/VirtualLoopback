@@ -7,8 +7,9 @@
               pluginManufacturer="XiAceLite"
               pluginManufacturerCode="XiAL" pluginCode="VLbk"
               pluginVST3Category="Instrument"
-              pluginName="VirtualLoopback" pluginDesc="PC再生音のWASAPIループバック取り込み"
+              pluginName="VirtualLoopback" pluginDesc="PC再生音のループバック取り込み（WASAPI / Core Audio Tap）"
               pluginAUMainType="'aumu'" pluginVSTCategory="kPlugCategSynth"
+              pluginFormats="buildVST3,buildAU,buildStandalone"
               version="1.0.0">
   <MAINGROUP id="VLMain" name="VirtualLoopback">
     <GROUP id="{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}" name="Source">
@@ -16,6 +17,10 @@
             file="Source/WasapiLoopbackCapture.h"/>
       <FILE id="VLCapC" name="WasapiLoopbackCapture.cpp" compile="1" resource="0"
             file="Source/WasapiLoopbackCapture.cpp"/>
+      <FILE id="VLMacH" name="CoreAudioTapCapture.h" compile="0" resource="0"
+            file="Source/CoreAudioTapCapture.h"/>
+      <FILE id="VLMacC" name="CoreAudioTapCapture.mm" compile="1" resource="0"
+            file="Source/CoreAudioTapCapture.mm"/>
       <FILE id="VLProcC" name="PluginProcessor.cpp" compile="1" resource="0"
             file="Source/PluginProcessor.cpp"/>
       <FILE id="VLProcH" name="PluginProcessor.h" compile="0" resource="0"
@@ -64,5 +69,30 @@
         <MODULEPATH id="juce_gui_extra" path="F:/JUCE/modules"/>
       </MODULEPATHS>
     </VS2022>
+    <XCODE_MAC targetFolder="Builds/MacOSX" hardenedRuntime="1"
+               microphonePermissionNeeded="0"
+               extraInfoPlistKeys="&lt;key&gt;NSAudioCaptureUsageDescription&lt;/key&gt;&lt;string&gt;VirtualLoopback が Chrome などの再生音を DAW に取り込むために、システムオーディオの収録許可が必要です。&lt;/string&gt;"
+               customXcodeFlags="MACOSX_DEPLOYMENT_TARGET = 14.2">
+      <CONFIGURATIONS>
+        <CONFIGURATION isDebug="1" name="Debug" targetName="VirtualLoopback"
+                       osxCompatibility="14.0 SDK" macosTargetArch="arm64,x86_64"/>
+        <CONFIGURATION isDebug="0" name="Release" targetName="VirtualLoopback"
+                       osxCompatibility="14.0 SDK" macosTargetArch="arm64,x86_64"/>
+      </CONFIGURATIONS>
+      <MODULEPATHS>
+        <MODULEPATH id="juce_audio_basics" path="F:/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_devices" path="F:/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_formats" path="F:/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_plugin_client" path="F:/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors" path="F:/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_utils" path="F:/JUCE/modules"/>
+        <MODULEPATH id="juce_core" path="F:/JUCE/modules"/>
+        <MODULEPATH id="juce_data_structures" path="F:/JUCE/modules"/>
+        <MODULEPATH id="juce_events" path="F:/JUCE/modules"/>
+        <MODULEPATH id="juce_graphics" path="F:/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_basics" path="F:/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_extra" path="F:/JUCE/modules"/>
+      </MODULEPATHS>
+    </XCODE_MAC>
   </EXPORTFORMATS>
 </JUCERPROJECT>

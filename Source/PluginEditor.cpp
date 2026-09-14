@@ -3,7 +3,7 @@
 VirtualLoopbackAudioProcessorEditor::VirtualLoopbackAudioProcessorEditor (VirtualLoopbackAudioProcessor& p)
     : AudioProcessorEditor (&p), processor (p)
 {
-    setSize (540, 320);
+    setSize (540, 340);
     setResizeLimits (500, 300, 900, 600);
     setResizable (true, false);
 
@@ -19,9 +19,15 @@ VirtualLoopbackAudioProcessorEditor::VirtualLoopbackAudioProcessorEditor (Virtua
     titleLabel.setColour (juce::Label::textColourId, juce::Colours::white);
     addAndMakeVisible (titleLabel);
 
+#if JUCE_MAC
+    hintLabel.setText (juce::String (L"「システム再生音」は Chrome など DAW 以外の再生を取り込みます。\n"
+                                     L"初回は「画面収録とシステムオーディオ」で、使っている DAW を許可してください。"),
+                       juce::dontSendNotification);
+#else
     hintLabel.setText (juce::String (L"Chrome などのアプリが使用している再生デバイスを選択してください。\n"
                                      L"SyncRoom / DAW のモニター戻りが出ているデバイスは選ばないでください。"),
                        juce::dontSendNotification);
+#endif
     hintLabel.setFont (juce::Font (juce::FontOptions (13.0f)));
     hintLabel.setJustificationType (juce::Justification::topLeft);
     hintLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.85f));
@@ -131,7 +137,7 @@ void VirtualLoopbackAudioProcessorEditor::resized()
 
     titleLabel.setBounds (r.removeFromTop (28));
     r.removeFromTop (6);
-    hintLabel.setBounds (r.removeFromTop (48));
+    hintLabel.setBounds (r.removeFromTop (56));
     r.removeFromTop (10);
 
     auto row = r.removeFromTop (30);

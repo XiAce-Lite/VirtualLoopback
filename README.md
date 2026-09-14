@@ -1,10 +1,12 @@
 # VirtualLoopback
 
-Windows の PC 再生音（ブラウザ・メディアプレイヤーなど）を、**仮想ケーブルなし**で DAW のトラックに取り込む VST3 です。
+Windows の PC 再生音（ブラウザ・メディアプレイヤーなど）を、**仮想ケーブルなし**で DAW のトラックに取り込むプラグインです。
 
-内部では Windows の **WASAPI ループバック**を使っています。VB-Cable / VoiceMeeter は不要です。
+- **Windows:** **WASAPI ループバック**（VB-Cable / VoiceMeeter 不要）
+- **Mac:** **Core Audio Process Tap**（BlackHole / Rogue Amoeba Loopback 不要、macOS 14.2 以降）
 
-> **対応 OS:** Windows のみ（Mac 非対応）
+> **対応 OS:** Windows、および macOS 14.2 以降  
+> Mac 版のソースは `feature/macos-coreaudio` ブランチです。master の配布物は従来どおり Windows VST3 です。
 
 [English README](README.en.md)
 
@@ -28,6 +30,8 @@ SYNCROOM でセッションするとき、マイク演奏と同時に「PC で�
 
 ## インストール
 
+### Windows
+
 ビルド不要です。リポジトリの **`Release`** フォルダにある配布物を使ってください。
 
 1. [`Release/VirtualLoopback.vst3`](Release/VirtualLoopback.vst3) を入手する  
@@ -38,6 +42,21 @@ SYNCROOM でセッションするとき、マイク演奏と同時に「PC で�
    （サードパーティの VST3 を一度も入れていない PC では、最初から存在しないことがあります。管理者権限が必要な場合があります）
 4. DAW でプラグインを再スキャンする（Cubase の場合は再起動でも可）
 5. メーカー **XiAceLite** / プラグイン名 **VirtualLoopback** が出ることを確認する
+
+### Mac（VST3 / AU）
+
+Mac 版は **バンドル**です（Windows のような単一 `.vst3` ファイルではありません）。GitHub Release の Mac 用 zip を展開して使います。
+
+1. `VirtualLoopback.vst3` を **`~/Library/Audio/Plug-Ins/VST3/`** にコピーする  
+   （Logic 以外、Cubase / SYNCROOM VST 連携など）
+2. `VirtualLoopback.component` を **`~/Library/Audio/Plug-Ins/Components/`** にコピーする  
+   （Logic / GarageBand など AU ホスト）
+3. フォルダが無ければ作成する
+4. DAW でプラグインを再スキャンする
+5. 初回キャプチャ時、macOS が許可を求めたら **画面収録とシステムオーディオ** で **使っている DAW** を許可する  
+   （プラグイン単体ではなく Cubase などのホスト側です。プロンプトが出ないときはシステム設定から手動で追加）
+
+BlackHole や Loopback のインストールは不要です。仮想デバイスも追加しません。
 
 ---
 
@@ -99,6 +118,8 @@ DAW と SYNCROOM で同じ ASIO を同時に掴むと衝突しやすいので、
 
 ここが一番わかりにくいところです。
 
+### Windows
+
 VirtualLoopback は、「Windows 上で **その再生デバイスに流れている音**」を取り込みます。
 
 ### 選ぶべきもの（典型例）
@@ -125,6 +146,14 @@ Chrome や MP3 プレイヤーが普段スピーカーから鳴るとき、多�
 2. Chrome やプレイヤーで音を出す
 3. プラグインの **出力レベル** メーターが振れれば OK
 
+### Mac
+
+既定の **「システム再生音」** を選んでください。Chrome / Music など、DAW 以外のアプリが出している再生音をまとめて取り込みます（ホスト DAW と SYNCROOM は除外します）。
+
+特定の出力デバイス名を選ぶこともできますが、まずは「システム再生音」でメーターが振るかを確認してください。
+
+キャプチャ中なのにメーターが動かないときは、**システム設定 → プライバシーとセキュリティ → 画面収録とシステムオーディオ** で DAW が許可されているか確認してください。許可が無いと API は成功したように見えて無音だけが来ます。
+
 ---
 
 ## ビルド（開発者向け）
@@ -140,10 +169,18 @@ Chrome や MP3 プレイヤーが普段スピーカーから鳴るとき、多�
 
 MSBuild を使う場合は **amd64 版** を推奨します。
 
+### Mac
+
+- macOS 14.2 以降、Xcode、JUCE
+- Projucer で Xcode exporter の JUCE モジュールパスを、Mac 上の JUCE に合わせてから `--resave`
+- `Builds/MacOSX/VirtualLoopback.xcodeproj` を Universal（arm64 + x86_64）で VST3 / AU ビルド
+- 配布前は codesign と公証（notarize）を推奨（ad-hoc 署名だとシステムオーディオ許可が不安定になりやすい）
+
 ---
 
 ## 注意事項
 
-- **Windows 専用**です。Mac では動作しません
+- Mac は **macOS 14.2 以降** が必要です（それ以前には公開の再生ミックス API がありません）
+- Mac では BlackHole / Loopback / 仮想 HAL ドライバは使いません
 - ファイル再生（あらかじめ用意した WAV 等）は、本プラグインの対象外です
 - 初回キャプチャ開始時、内部バッファが溜まるまでごく短く無音になることがあります
