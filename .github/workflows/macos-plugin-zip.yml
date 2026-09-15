@@ -1,0 +1,110 @@
+name: macOS plugin zip
+
+on:
+  push:
+    branches: [master, feature/macos-coreaudio]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Xcode \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=14.2
+
+      - name: Build VST3 and AU
+        run: |
+          cmake --build build --config Release --target VirtualLoopback_VST3 VirtualLoopback_AU --parallel 4
+
+      - name: Package zip
+        run: |
+          set -euo pipefail
+          VST3=$(find build -type d -path '*/Release/VST3/VirtualLoopback.vst3' | head -n 1)
+          AU=$(find build -type d -path '*/Release/AU/VirtualLoopback.component' | head -n 1)
+          echo "VST3=$VST3"
+          echo "AU=$AU"
+          test -n "$VST3"
+          test -n "$AU"
+          test -f "$VST3/Contents/MacOS/VirtualLoopback"
+          test -f "$AU/Contents/MacOS/VirtualLoopback"
+          test -f "$VST3/Contents/Resources/moduleinfo.json"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$VST3/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$AU/Contents/Info.plist"
+          lipo -info "$VST3/Contents/MacOS/VirtualLoopback"
+          lipo -info "$AU/Contents/MacOS/VirtualLoopback"
+
+          # Flat zip root (no outer wrapper folder). Nested wrappers make Cubase miss VST3.
+          STAGE=dist/stage
+          rm -rf dist
+          mkdir -p "$STAGE"
+          ditto "$VST3" "$STAGE/VirtualLoopback.vst3"
+          ditto "$AU" "$STAGE/VirtualLoopback.component"
+          cp packaging/README-mac.txt "$STAGE/README-mac.txt"
+
+          # Force distinct bundle IDs (JUCE CMake often stamps the shared BUNDLE_ID on both).
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.XiAceLite.VirtualLoopback.vst3" \
+            "$STAGE/VirtualLoopback.vst3/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.XiAceLite.VirtualLoopback.au" \
+            "$STAGE/VirtualLoopback.component/Contents/Info.plist"
+
+          # Ensure system-audio TCC string is present for hosts that read the plugin plist.
+          for PLIST in \
+            "$STAGE/VirtualLoopback.vst3/Contents/Info.plist" \
+            "$STAGE/VirtualLoopback.component/Contents/Info.plist"
+          do
+            if ! /usr/libexec/PlistBuddy -c 'Print :NSAudioCaptureUsageDescription' "$PLIST" >/dev/null 2>&1; then
+              /usr/libexec/PlistBuddy -c \
+                'Add :NSAudioCaptureUsageDescription string VirtualLoopback needs System Audio Recording permission to capture playback from other apps into your DAW.' \
+                "$PLIST"
+            fi
+          done
+
+          echo "VST3 bundle id: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$STAGE/VirtualLoopback.vst3/Contents/Info.plist")"
+          echo "AU bundle id: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$STAGE/VirtualLoopback.component/Contents/Info.plist")"
+
+          codesign --force --deep --sign - --timestamp=none "$STAGE/VirtualLoopback.vst3"
+          codesign --force --deep --sign - --timestamp=none "$STAGE/VirtualLoopback.component"
+
+          (
+            cd "$STAGE"
+            zip -ry ../../VirtualLoopback-macos-universal.zip \
+              VirtualLoopback.vst3 VirtualLoopback.component README-mac.txt
+          )
+          ls -lh VirtualLoopback-macos-universal.zip
+          unzip -l VirtualLoopback-macos-universal.zip | head -n 40
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VirtualLoopback-macos-universal
+          path: VirtualLoopback-macos-universal.zip
+          if-no-files-found: error
+
+      - name: Attach zip to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          case "$TAG" in
+            v*) ;;
+            *) TAG="v1.0.1" ;;
+          esac
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG not found yet; skipping upload"
+            exit 0
+          fi
+          gh release upload "$TAG" VirtualLoopback-macos-universal.zip --clobber
+          echo "Uploaded Mac zip to $TAG"

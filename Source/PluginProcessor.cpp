@@ -41,7 +41,7 @@ VirtualLoopbackAudioProcessor::VirtualLoopbackAudioProcessor()
 
 VirtualLoopbackAudioProcessor::~VirtualLoopbackAudioProcessor()
 {
-#if JUCE_WINDOWS
+#if VIRTUALLOOPBACK_HAS_CAPTURE
     capture.stop();
 #endif
 }
@@ -104,7 +104,7 @@ void VirtualLoopbackAudioProcessor::resetResamplerState()
 
 void VirtualLoopbackAudioProcessor::pullIntoPending()
 {
-#if JUCE_WINDOWS
+#if VIRTUALLOOPBACK_HAS_CAPTURE
     // Leave headroom in pending buffer
     const int room = pendingCapture.getNumSamples() - pendingFrames;
     if (room <= 16)
@@ -144,7 +144,7 @@ void VirtualLoopbackAudioProcessor::prepareToPlay (double sampleRate, int sample
 
 void VirtualLoopbackAudioProcessor::releaseResources()
 {
-#if JUCE_WINDOWS
+#if VIRTUALLOOPBACK_HAS_CAPTURE
     capture.stop();
 #endif
     resetResamplerState();
@@ -180,7 +180,7 @@ void VirtualLoopbackAudioProcessor::processBlock (juce::AudioBuffer<float>& buff
     const bool enabled = captureEnabledParam != nullptr && captureEnabledParam->get();
     const float volume = volumeParam != nullptr ? volumeParam->get() : 0.8f;
 
-#if ! JUCE_WINDOWS
+#if ! VIRTUALLOOPBACK_HAS_CAPTURE
     juce::ignoreUnused (muted, enabled, volume);
     uiPeak = 0.0f;
     return;
@@ -394,6 +394,8 @@ void VirtualLoopbackAudioProcessor::refreshDeviceList()
 {
 #if JUCE_WINDOWS
     devices = WasapiLoopbackCapture::getRenderDevices();
+#elif JUCE_MAC
+    devices = CoreAudioTapCapture::getRenderDevices();
 #else
     devices.clear();
 #endif
@@ -401,7 +403,7 @@ void VirtualLoopbackAudioProcessor::refreshDeviceList()
 
 bool VirtualLoopbackAudioProcessor::restartCapture()
 {
-#if JUCE_WINDOWS
+#if VIRTUALLOOPBACK_HAS_CAPTURE
     resetResamplerState();
 
     if (captureEnabledParam == nullptr || ! captureEnabledParam->get())
@@ -418,7 +420,7 @@ bool VirtualLoopbackAudioProcessor::restartCapture()
 
 bool VirtualLoopbackAudioProcessor::isCaptureRunning() const
 {
-#if JUCE_WINDOWS
+#if VIRTUALLOOPBACK_HAS_CAPTURE
     return capture.isRunning();
 #else
     return false;
@@ -427,7 +429,7 @@ bool VirtualLoopbackAudioProcessor::isCaptureRunning() const
 
 juce::String VirtualLoopbackAudioProcessor::getCaptureStatusText() const
 {
-#if JUCE_WINDOWS
+#if VIRTUALLOOPBACK_HAS_CAPTURE
     if (captureEnabledParam != nullptr && ! captureEnabledParam->get())
         return juce::String (L"キャプチャ停止中");
 
@@ -444,7 +446,7 @@ juce::String VirtualLoopbackAudioProcessor::getCaptureStatusText() const
 
     return juce::String (L"キャプチャしていません");
 #else
-    return juce::String (L"Windows 専用です");
+    return juce::String (L"この OS では未対応です");
 #endif
 }
 

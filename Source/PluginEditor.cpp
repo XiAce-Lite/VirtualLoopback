@@ -3,7 +3,7 @@
 VirtualLoopbackAudioProcessorEditor::VirtualLoopbackAudioProcessorEditor (VirtualLoopbackAudioProcessor& p)
     : AudioProcessorEditor (&p), processor (p)
 {
-    setSize (540, 320);
+    setSize (540, 340);
     setResizeLimits (500, 300, 900, 600);
     setResizable (true, false);
 
@@ -19,9 +19,15 @@ VirtualLoopbackAudioProcessorEditor::VirtualLoopbackAudioProcessorEditor (Virtua
     titleLabel.setColour (juce::Label::textColourId, juce::Colours::white);
     addAndMakeVisible (titleLabel);
 
+#if JUCE_MAC
+    hintLabel.setText (juce::String (L"「システム再生音」は Chrome など DAW 以外の再生を取り込みます。\n"
+                                     L"初回は「画面収録とシステムオーディオ」で、使っている DAW を許可してください。"),
+                       juce::dontSendNotification);
+#else
     hintLabel.setText (juce::String (L"Chrome などのアプリが使用している再生デバイスを選択してください。\n"
                                      L"SyncRoom / DAW のモニター戻りが出ているデバイスは選ばないでください。"),
                        juce::dontSendNotification);
+#endif
     hintLabel.setFont (juce::Font (juce::FontOptions (13.0f)));
     hintLabel.setJustificationType (juce::Justification::topLeft);
     hintLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.85f));
@@ -82,7 +88,7 @@ VirtualLoopbackAudioProcessorEditor::VirtualLoopbackAudioProcessorEditor (Virtua
     statusLabel.setColour (juce::Label::textColourId, juce::Colours::white);
     addAndMakeVisible (statusLabel);
 
-    meterLabel.setText (juce::String (L"出力レベル"), juce::dontSendNotification);
+    meterLabel.setText (juce::String (L"出力レベル (dB)"), juce::dontSendNotification);
     meterLabel.setFont (juce::Font (juce::FontOptions (12.0f)));
     meterLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.7f));
     addAndMakeVisible (meterLabel);
@@ -109,7 +115,7 @@ void VirtualLoopbackAudioProcessorEditor::paint (juce::Graphics& g)
         auto filled = meterBounds;
         filled.setWidth (juce::jlimit (0, meterBounds.getWidth(),
                                        (int) std::round (meterLevel * (float) meterBounds.getWidth())));
-        g.setColour (meterLevel > 0.9f ? juce::Colours::red.brighter (0.2f)
+        g.setColour (meterLevel > 0.95f ? juce::Colours::red.brighter (0.2f)
                                        : juce::Colour (0xff5ad67c));
         g.fillRoundedRectangle (filled.toFloat(), 3.0f);
 
@@ -131,7 +137,7 @@ void VirtualLoopbackAudioProcessorEditor::resized()
 
     titleLabel.setBounds (r.removeFromTop (28));
     r.removeFromTop (6);
-    hintLabel.setBounds (r.removeFromTop (48));
+    hintLabel.setBounds (r.removeFromTop (56));
     r.removeFromTop (10);
 
     auto row = r.removeFromTop (30);
@@ -178,7 +184,12 @@ void VirtualLoopbackAudioProcessorEditor::updateStatus()
 
 void VirtualLoopbackAudioProcessorEditor::timerCallback()
 {
-    meterLevel = 0.75f * meterLevel + 0.25f * processor.getInputPeak();
+    // Map peak to a DAW-like dB meter (-60 dB .. 0 dB). Linear amplitude
+    // made the bar look quieter than Cubase/Logic track meters.
+    const float peak = processor.getInputPeak();
+    const float db = juce::Decibels::gainToDecibels (peak, -60.0f);
+    const float dbNorm = juce::jlimit (0.0f, 1.0f, (db + 60.0f) / 60.0f);
+    meterLevel = 0.75f * meterLevel + 0.25f * dbNorm;
     updateStatus();
     captureToggle.setToggleState (processor.captureEnabledParam->get(), juce::dontSendNotification);
     muteToggle.setToggleState (processor.muteParam->get(), juce::dontSendNotification);

@@ -1,10 +1,12 @@
 # VirtualLoopback
 
-A VST3 plugin that routes **PC playback audio** (browser, media players, etc.) into a DAW track **without virtual cables**.
+A plugin that routes **PC playback audio** (browser, media players, etc.) into a DAW track **without virtual cables**.
 
-It uses Windows **WASAPI loopback**. VB-Cable / VoiceMeeter are not required.
+- **Windows:** **WASAPI loopback** (VB-Cable / VoiceMeeter not required)
+- **Mac:** **Core Audio Process Tap** (BlackHole / Rogue Amoeba Loopback not required; macOS 14.2+)
 
-> **Supported OS:** Windows only (not available on Mac)
+> **Supported OS:** Windows, and macOS 14.2 or later  
+> Latest binaries are on GitHub Release **v1.0.1** (Windows VST3 / Mac VST3+AU).
 
 [日本語版 README](README.md)
 
@@ -28,6 +30,8 @@ For pre-made static files, use SYNCROOM’s built-in file playback. This plugin 
 
 ## Install
 
+### Windows
+
 No build step is required. Use the files in the repository **`Release`** folder.
 
 1. Get [`Release/VirtualLoopback.vst3`](Release/VirtualLoopback.vst3)  
@@ -38,6 +42,23 @@ No build step is required. Use the files in the repository **`Release`** folder.
    (on PCs that have never had a third-party VST3 installed, this folder may be missing from the start. Administrator privileges may be required.)
 4. Rescan plugins in your DAW (for Cubase, restarting the app also works)
 5. Confirm **XiAceLite** / **VirtualLoopback** appears
+
+### Mac (VST3 / AU)
+
+The Mac build is a **bundle**. Use **`VirtualLoopback-macos-universal.zip`** from GitHub Releases.
+
+1. Unzip, then clear quarantine: `xattr -cr VirtualLoopback.vst3` and `xattr -cr VirtualLoopback.component`
+2. Copy the **`VirtualLoopback.vst3` package itself** to **`~/Library/Audio/Plug-Ins/VST3/`** (top level — not nested in another folder). On Mac, `.vst3` is a folder; final path must be `.../VST3/VirtualLoopback.vst3/Contents/MacOS/VirtualLoopback`  
+   (Cubase, SYNCROOM VST link, and other VST3 hosts)
+3. Copy `VirtualLoopback.component` to **`~/Library/Audio/Plug-Ins/Components/`**  
+   (Logic / GarageBand and other AU hosts)
+4. Create those folders if they do not exist
+5. Rescan plugins in your DAW (Cubase: Studio → VST Plug-in Manager)
+6. On first capture, grant **Screen & System Audio Recording** to **the DAW** (the host, not the plugin). If no prompt appears, add the DAW manually in System Settings
+
+If AU appears but VST3 does not, the VST3 path is usually nested incorrectly or quarantine is still set.
+
+BlackHole and Loopback are not required. This plugin does not install a virtual audio device.
 
 ---
 
@@ -99,6 +120,8 @@ Using the same ASIO device in both the DAW and SYNCROOM at once often conflicts,
 
 This is the most confusing part.
 
+### Windows
+
 VirtualLoopback captures whatever is playing on the **Windows render (playback) device** you select.
 
 ### What to choose (typical)
@@ -125,6 +148,12 @@ Choosing those can loop remote/monitor audio back into the input and cause echo 
 2. Play audio in Chrome or another player
 3. If the plugin’s **output level** meter moves, you’re good
 
+### Mac
+
+Keep the default **システム再生音** item. It taps playback from apps other than the DAW (Chrome, Music, etc.). The host DAW and SYNCROOM are excluded. You can also pick a named output device after that.
+
+If capture is running but the meter stays still, open **System Settings → Privacy & Security → Screen & System Audio Recording** and allow the DAW. Without that permission the APIs can still succeed and deliver only silence.
+
 ---
 
 ## Build (for developers)
@@ -140,10 +169,18 @@ Choosing those can loop remote/monitor audio back into the input and cause echo 
 
 If using MSBuild, prefer the **amd64** toolchain.
 
+### Mac
+
+- macOS 14.2+, Xcode, and JUCE
+- In Projucer, point the Xcode exporter’s JUCE module path at your Mac JUCE tree, then `--resave`
+- Build `Builds/MacOSX/VirtualLoopback.xcodeproj` as Universal (arm64 + x86_64) for VST3 and AU
+- Codesign and notarize before shipping (ad-hoc signing often makes the system-audio permission unreliable)
+
 ---
 
 ## Notes
 
-- **Windows only** — does not work on Mac
+- Mac requires **macOS 14.2 or later** (there is no public playback-mix API before that)
+- Mac does **not** use BlackHole, Loopback, or a virtual HAL driver
 - Playing prepared static files (WAV, etc.) is out of scope for this plugin
 - On first capture start, there may be a very short silence while the internal buffer fills

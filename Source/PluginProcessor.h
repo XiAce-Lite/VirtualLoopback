@@ -4,6 +4,14 @@
 
 #if JUCE_WINDOWS
  #include "WasapiLoopbackCapture.h"
+#elif JUCE_MAC
+ #include "CoreAudioTapCapture.h"
+#endif
+
+#if JUCE_WINDOWS || JUCE_MAC
+ #define VIRTUALLOOPBACK_HAS_CAPTURE 1
+#else
+ #define VIRTUALLOOPBACK_HAS_CAPTURE 0
 #endif
 
 //==============================================================================
@@ -12,6 +20,8 @@ class VirtualLoopbackAudioProcessor : public juce::AudioProcessor
 public:
 #if JUCE_WINDOWS
     using DeviceInfo = WasapiLoopbackCapture::DeviceInfo;
+#elif JUCE_MAC
+    using DeviceInfo = CoreAudioTapCapture::DeviceInfo;
 #else
     struct DeviceInfo
     {
@@ -82,6 +92,8 @@ private:
 
 #if JUCE_WINDOWS
     WasapiLoopbackCapture capture;
+#elif JUCE_MAC
+    CoreAudioTapCapture capture;
 #endif
 
     juce::AudioBuffer<float> pendingCapture; // planar, capture-rate domain
