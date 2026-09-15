@@ -31,27 +31,38 @@ jobs:
       - name: Package zip
         run: |
           set -euo pipefail
-          VST3=$(find build -type d -name 'VirtualLoopback.vst3' | head -n 1)
-          AU=$(find build -type d -name 'VirtualLoopback.component' | head -n 1)
+          VST3=$(find build -type d -path '*/Release/VST3/VirtualLoopback.vst3' | head -n 1)
+          AU=$(find build -type d -path '*/Release/AU/VirtualLoopback.component' | head -n 1)
           echo "VST3=$VST3"
           echo "AU=$AU"
           test -n "$VST3"
           test -n "$AU"
-          lipo -info "$VST3/Contents/MacOS/"* || true
-          lipo -info "$AU/Contents/MacOS/"* || true
+          test -f "$VST3/Contents/MacOS/VirtualLoopback"
+          test -f "$AU/Contents/MacOS/VirtualLoopback"
+          test -f "$VST3/Contents/Resources/moduleinfo.json"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$VST3/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$AU/Contents/Info.plist"
+          lipo -info "$VST3/Contents/MacOS/VirtualLoopback"
+          lipo -info "$AU/Contents/MacOS/VirtualLoopback"
 
-          STAGE=dist/VirtualLoopback-macos
+          # Flat zip root (no outer wrapper folder). Nested wrappers make Cubase miss VST3.
+          STAGE=dist/stage
           rm -rf dist
           mkdir -p "$STAGE"
           ditto "$VST3" "$STAGE/VirtualLoopback.vst3"
           ditto "$AU" "$STAGE/VirtualLoopback.component"
           cp packaging/README-mac.txt "$STAGE/README-mac.txt"
 
-          codesign --force --deep --sign - --timestamp=none "$STAGE/VirtualLoopback.vst3" || true
-          codesign --force --deep --sign - --timestamp=none "$STAGE/VirtualLoopback.component" || true
+          codesign --force --deep --sign - --timestamp=none "$STAGE/VirtualLoopback.vst3"
+          codesign --force --deep --sign - --timestamp=none "$STAGE/VirtualLoopback.component"
 
-          ditto -c -k --keepParent "$STAGE" VirtualLoopback-macos-universal.zip
+          (
+            cd "$STAGE"
+            zip -ry ../../VirtualLoopback-macos-universal.zip \
+              VirtualLoopback.vst3 VirtualLoopback.component README-mac.txt
+          )
           ls -lh VirtualLoopback-macos-universal.zip
+          unzip -l VirtualLoopback-macos-universal.zip | head -n 40
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

@@ -45,10 +45,24 @@ juce_add_plugin(VirtualLoopback
     MICROPHONE_PERMISSION_ENABLED FALSE
     HARDENED_RUNTIME_ENABLED FALSE
     APP_SANDBOX_ENABLED FALSE
-    PLIST_TO_MERGE "<key>NSAudioCaptureUsageDescription</key><string>VirtualLoopback が Chrome などの再生音を DAW に取り込むために、システムオーディオの収録許可が必要です。</string>"
+    PLIST_TO_MERGE
+        "<key>NSAudioCaptureUsageDescription</key><string>VirtualLoopback needs System Audio Recording permission to capture playback from Chrome and other apps into your DAW.</string>"
 )
 
 juce_generate_juce_header(VirtualLoopback)
+
+# AU and VST3 must not share one CFBundleIdentifier on macOS.
+# Same ID can make hosts see AU while silently failing VST3 validation.
+if(APPLE)
+    set_target_properties(VirtualLoopback_AU PROPERTIES
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.XiAceLite.VirtualLoopback.au"
+        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.XiAceLite.VirtualLoopback.au"
+    )
+    set_target_properties(VirtualLoopback_VST3 PROPERTIES
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.XiAceLite.VirtualLoopback.vst3"
+        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.XiAceLite.VirtualLoopback.vst3"
+    )
+endif()
 
 set(VL_SOURCES
     Source/PluginProcessor.cpp

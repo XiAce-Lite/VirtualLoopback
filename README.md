@@ -48,14 +48,17 @@ SYNCROOM でセッションするとき、マイク演奏と同時に「PC で�
 Mac 版は **バンドル**です。GitHub Release の **`VirtualLoopback-macos-universal.zip`** を使ってください。
 
 1. zip を展開し、ターミナルで隔離属性を外す: `xattr -cr VirtualLoopback.vst3` と `xattr -cr VirtualLoopback.component`
-2. `VirtualLoopback.vst3` を **`~/Library/Audio/Plug-Ins/VST3/`** にコピーする  
+2. **`VirtualLoopback.vst3` パッケージそのもの**を **`~/Library/Audio/Plug-Ins/VST3/` の直下**にコピーする  
+   （外側フォルダごと入れない。Mac の `.vst3` はフォルダです。最終パスは `.../VST3/VirtualLoopback.vst3/Contents/MacOS/VirtualLoopback`）  
    （Logic 以外、Cubase / SYNCROOM VST 連携など）
 3. `VirtualLoopback.component` を **`~/Library/Audio/Plug-Ins/Components/`** にコピーする  
    （Logic / GarageBand など AU ホスト）
 4. フォルダが無ければ作成する
-5. DAW でプラグインを再スキャンする
+5. DAW でプラグインを再スキャンする（Cubase は Studio → VST Plug-in Manager）
 6. 初回キャプチャ時、macOS が許可を求めたら **画面収録とシステムオーディオ** で **使っている DAW** を許可する  
    （プラグイン単体ではなく Cubase などのホスト側です。プロンプトが出ないときはシステム設定から手動で追加）
+
+AU だけ見えて VST3 が出ないときは、ほぼ例外なく (2) のコピー先が入れ子になっているか、隔離属性が残っています。
 
 BlackHole や Loopback のインストールは不要です。仮想デバイスも追加しません。
 

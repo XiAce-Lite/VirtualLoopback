@@ -1,43 +1,70 @@
 VirtualLoopback for Mac (Core Audio Process Tap)
 ================================================
 
-macOS 14.2 以降 / Apple Silicon と Intel の Universal ビルドです。
-BlackHole や Rogue Amoeba Loopback は不要です。仮想オーディオデバイスも入れません。
+macOS 14.2+ / Universal (Apple Silicon + Intel)
+BlackHole / Rogue Amoeba Loopback are NOT required.
 
-この zip は GitHub Actions の macOS ランナーでビルドしています。
-Apple Developer 証明書での公証はしていません。
+This zip was built on GitHub Actions. It is ad-hoc signed, not Apple-notarized.
 
-インストール
+IMPORTANT — VST3 is a FOLDER
+----------------------------
+On Mac, VirtualLoopback.vst3 is a package (folder), not a single file like Windows.
+Copy the whole .vst3 package. Do not open it and copy only Contents/MacOS.
+
+Install
+-------
+1. Unzip. You should see these at the TOP LEVEL (not inside another folder):
+     VirtualLoopback.vst3
+     VirtualLoopback.component
+     README-mac.txt
+
+2. Clear quarantine (required — otherwise VST3 often fails to scan while AU still appears):
+
+     cd /path/to/unzipped
+     xattr -cr VirtualLoopback.vst3
+     xattr -cr VirtualLoopback.component
+
+3. VST3 (Cubase / SYNCROOM VST link / most DAWs):
+
+     mkdir -p ~/Library/Audio/Plug-Ins/VST3
+     ditto VirtualLoopback.vst3 ~/Library/Audio/Plug-Ins/VST3/VirtualLoopback.vst3
+
+   Correct final path:
+     ~/Library/Audio/Plug-Ins/VST3/VirtualLoopback.vst3/Contents/MacOS/VirtualLoopback
+
+   WRONG (hosts often miss this):
+     ~/Library/Audio/Plug-Ins/VST3/VirtualLoopback-macos/VirtualLoopback.vst3
+     ~/Library/Audio/Plug-Ins/VST3/VirtualLoopback.vst3/VirtualLoopback.vst3
+
+4. AU (Logic / GarageBand / AU hosts):
+
+     mkdir -p ~/Library/Audio/Plug-Ins/Components
+     ditto VirtualLoopback.component ~/Library/Audio/Plug-Ins/Components/VirtualLoopback.component
+
+5. Rescan plugins. Load as Instrument / Synth (not FX insert).
+
+6. First capture: System Settings → Privacy & Security → Screen & System Audio Recording
+   Allow the DAW host (Cubase etc.), not the plugin itself.
+
+Cubase notes
 ------------
-1. zip を展開する
+- Studio → VST Plug-in Manager → Rescan / Restart Cubase
+- Look under Instrument / Synth, manufacturer XiAceLite
+- If blacklisted, remove from blacklist and rescan
+- Confirm the path above with Finder (Go → Go to Folder… → ~/Library/Audio/Plug-Ins/VST3)
 
-2. ターミナルで、展開したフォルダに対して隔離属性を外す（重要）:
+Verify install in Terminal
+--------------------------
+  ls ~/Library/Audio/Plug-Ins/VST3/VirtualLoopback.vst3/Contents/MacOS
+  ls ~/Library/Audio/Plug-Ins/Components/VirtualLoopback.component/Contents/MacOS
+  xattr -p com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/VirtualLoopback.vst3 2>/dev/null || echo "VST3 quarantine: cleared OK"
 
-   xattr -cr VirtualLoopback.vst3
-   xattr -cr VirtualLoopback.component
+Usage
+-----
+Keep the default “システム再生音”, play Chrome/Music, watch the output meter.
 
-   Finder から「開く」を拒否されたときも、このコマンドを先に実行してください。
-
-3. VST3（Cubase / SYNCROOM VST 連携など）:
-   VirtualLoopback.vst3 を ~/Library/Audio/Plug-Ins/VST3/ へコピー
-
-4. AU（Logic など）:
-   VirtualLoopback.component を ~/Library/Audio/Plug-Ins/Components/ へコピー
-
-5. DAW でプラグインを再スキャンし、インストゥルメント / シンセとして挿す
-
-6. 初回キャプチャ時:
-   システム設定 → プライバシーとセキュリティ → 画面収録とシステムオーディオ
-   で、使っている DAW（Cubase など）を許可する
-   ※プラグイン単体ではなく、ホスト DAW 側です
-
-使い方
-------
-プラグイン画面の既定「システム再生音」のまま、Chrome や Music で音を出して
-出力レベルメーターが振れるか確認してください。
-
-問題が出たら
-------------
-- キャプチャ中なのに無音: DAW のシステムオーディオ収録許可を確認
-- プラグインが出ない: 上記のコピー先と、インストゥルメント一覧を確認
-- ハウリング: DAW / SYNCROOM のモニター戻りをタップしていないか確認
+Troubleshooting
+---------------
+- AU found, VST3 missing: almost always wrong copy path or quarantine still set
+- Capture running but silent: grant System Audio Recording to the DAW
+- Feedback: do not tap DAW / SYNCROOM monitor return

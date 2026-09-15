@@ -11,17 +11,23 @@ BlackHole および Rogue Amoeba Loopback は使いません。仮想 HAL ドラ
 - VST3 / AU（インストゥルメント）
 - Apple Silicon と Intel
 
-### インストール
-1. `VirtualLoopback-macos-universal.zip` を展開する
-2. ターミナルで隔離属性を外す:
-   `xattr -cr VirtualLoopback.vst3`
-   `xattr -cr VirtualLoopback.component`
-3. `VirtualLoopback.vst3` を `~/Library/Audio/Plug-Ins/VST3/` へコピー
-4. `VirtualLoopback.component` を `~/Library/Audio/Plug-Ins/Components/` へコピー
-5. DAW を再スキャンし、インストゥルメントとして挿す
-6. **システム設定 → プライバシーとセキュリティ → 画面収録とシステムオーディオ** で、使っている DAW を許可する
+### インストール（VST3 が出ない報告への注意）
+1. zip を展開する（直下に `VirtualLoopback.vst3` と `VirtualLoopback.component` があること）
+2. 隔離属性を外す:
+   ```
+   xattr -cr VirtualLoopback.vst3
+   xattr -cr VirtualLoopback.component
+   ```
+3. **`.vst3` パッケージそのもの**を `~/Library/Audio/Plug-Ins/VST3/` の直下へコピー  
+   （外側フォルダごと入れない。最終パスは  
+   `.../VST3/VirtualLoopback.vst3/Contents/MacOS/VirtualLoopback`）
+4. `.component` を `~/Library/Audio/Plug-Ins/Components/` へコピー
+5. DAW を再スキャンし、**インストゥルメント**として挿す
+6. **システム設定 → プライバシーとセキュリティ → 画面収録とシステムオーディオ** で DAW を許可
 
-公証はしていません。Gatekeeper に止められたら、上記の `xattr -cr` を先に実行してください。詳細は zip 内の `README-mac.txt` を参照。
+Mac の VST3 は Windows のような単一ファイルではなく **フォルダ（バンドル）** です。中身だけコピーすると認識されません。
+
+公証はしていません。Gatekeeper / 隔離属性が残っていると、AU は見えて VST3 だけ落ちることがあります。詳細は zip 内 `README-mac.txt`。
 
 ### 注意
 - プラグイン画面の既定は「システム再生音」（DAW / SYNCROOM は除外）
