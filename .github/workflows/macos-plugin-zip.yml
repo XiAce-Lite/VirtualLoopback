@@ -53,6 +53,27 @@ jobs:
           ditto "$AU" "$STAGE/VirtualLoopback.component"
           cp packaging/README-mac.txt "$STAGE/README-mac.txt"
 
+          # Force distinct bundle IDs (JUCE CMake often stamps the shared BUNDLE_ID on both).
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.XiAceLite.VirtualLoopback.vst3" \
+            "$STAGE/VirtualLoopback.vst3/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.XiAceLite.VirtualLoopback.au" \
+            "$STAGE/VirtualLoopback.component/Contents/Info.plist"
+
+          # Ensure system-audio TCC string is present for hosts that read the plugin plist.
+          for PLIST in \
+            "$STAGE/VirtualLoopback.vst3/Contents/Info.plist" \
+            "$STAGE/VirtualLoopback.component/Contents/Info.plist"
+          do
+            if ! /usr/libexec/PlistBuddy -c 'Print :NSAudioCaptureUsageDescription' "$PLIST" >/dev/null 2>&1; then
+              /usr/libexec/PlistBuddy -c \
+                'Add :NSAudioCaptureUsageDescription string VirtualLoopback needs System Audio Recording permission to capture playback from other apps into your DAW.' \
+                "$PLIST"
+            fi
+          done
+
+          echo "VST3 bundle id: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$STAGE/VirtualLoopback.vst3/Contents/Info.plist")"
+          echo "AU bundle id: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$STAGE/VirtualLoopback.component/Contents/Info.plist")"
+
           codesign --force --deep --sign - --timestamp=none "$STAGE/VirtualLoopback.vst3"
           codesign --force --deep --sign - --timestamp=none "$STAGE/VirtualLoopback.component"
 
