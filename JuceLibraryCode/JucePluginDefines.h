@@ -44,7 +44,7 @@
  #define JucePlugin_Name                   "VirtualLoopback"
 #endif
 #ifndef  JucePlugin_Desc
- #define JucePlugin_Desc                   "PC\xe5\x86\x8d\xe7\x94\x9f\xe9\x9f\xb3\xe3\x81\xaeWASAPI\xe3\x83\xab\xe3\x83\xbc\xe3\x83\x97\xe3\x83\x90\xe3\x83\x83\xe3\x82\xaf\xe5\x8f\x96\xe3\x82\x8a\xe8\xbe\xbc\xe3\x81\xbf"
+ #define JucePlugin_Desc                   "PC\xe5\x86\x8d\xe7\x94\x9f\xe9\x9f\xb3\xe3\x81\xae\xe3\x83\xab\xe3\x83\xbc\xe3\x83\x97\xe3\x83\x90\xe3\x83\x83\xe3\x82\xaf\xe5\x8f\x96\xe3\x82\x8a\xe8\xbe\xbc\xe3\x81\xbf\xef\xbc\x88WASAPI / Core Audio Tap\xef\xbc\x89"
 #endif
 #ifndef  JucePlugin_Manufacturer
  #define JucePlugin_Manufacturer           "XiAceLite"
@@ -77,13 +77,13 @@
  #define JucePlugin_EditorRequiresKeyboardFocus  0
 #endif
 #ifndef  JucePlugin_Version
- #define JucePlugin_Version                1.0.0
+ #define JucePlugin_Version                1.0.1
 #endif
 #ifndef  JucePlugin_VersionCode
- #define JucePlugin_VersionCode            0x10000
+ #define JucePlugin_VersionCode            0x10001
 #endif
 #ifndef  JucePlugin_VersionString
- #define JucePlugin_VersionString          "1.0.0"
+ #define JucePlugin_VersionString          "1.0.1"
 #endif
 #ifndef  JucePlugin_VSTUniqueID
  #define JucePlugin_VSTUniqueID            JucePlugin_PluginCode
@@ -155,7 +155,7 @@
  #define JucePlugin_ARAFactoryID           "com.XiAceLite.VirtualLoopback.factory"
 #endif
 #ifndef  JucePlugin_ARADocumentArchiveID
- #define JucePlugin_ARADocumentArchiveID   "com.XiAceLite.VirtualLoopback.aradocumentarchive.1.0.0"
+ #define JucePlugin_ARADocumentArchiveID   "com.XiAceLite.VirtualLoopback.aradocumentarchive.1.0.1"
 #endif
 #ifndef  JucePlugin_ARACompatibleArchiveIDs
  #define JucePlugin_ARACompatibleArchiveIDs  ""

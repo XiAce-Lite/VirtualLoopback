@@ -6,7 +6,7 @@ Windows の PC 再生音（ブラウザ・メディアプレイヤーなど）�
 - **Mac:** **Core Audio Process Tap**（BlackHole / Rogue Amoeba Loopback 不要、macOS 14.2 以降）
 
 > **対応 OS:** Windows、および macOS 14.2 以降  
-> Mac 版のソースは `feature/macos-coreaudio` ブランチです。master の配布物は従来どおり Windows VST3 です。
+> 最新配布は GitHub Release **v1.0.1**（Windows VST3 / Mac VST3+AU）です。
 
 [English README](README.en.md)
 

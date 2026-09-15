@@ -6,7 +6,7 @@ A plugin that routes **PC playback audio** (browser, media players, etc.) into a
 - **Mac:** **Core Audio Process Tap** (BlackHole / Rogue Amoeba Loopback not required; macOS 14.2+)
 
 > **Supported OS:** Windows, and macOS 14.2 or later  
-> Mac sources live on the `feature/macos-coreaudio` branch. The master branch still ships the Windows VST3.
+> Latest binaries are on GitHub Release **v1.0.1** (Windows VST3 / Mac VST3+AU).
 
 [日本語版 README](README.md)
 

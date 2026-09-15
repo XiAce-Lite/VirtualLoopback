@@ -2,7 +2,8 @@ name: macOS plugin zip
 
 on:
   push:
-    branches: [feature/macos-coreaudio]
+    branches: [master, feature/macos-coreaudio]
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -96,5 +97,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload v1.1.0-mac VirtualLoopback-macos-universal.zip --clobber
-          gh release edit v1.1.0-mac --notes-file packaging/release-notes-mac.md
+          TAG="${GITHUB_REF_NAME}"
+          case "$TAG" in
+            v*) ;;
+            *) TAG="v1.0.1" ;;
+          esac
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG not found yet; skipping upload"
+            exit 0
+          fi
+          gh release upload "$TAG" VirtualLoopback-macos-universal.zip --clobber
+          echo "Uploaded Mac zip to $TAG"

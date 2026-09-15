@@ -88,7 +88,7 @@ VirtualLoopbackAudioProcessorEditor::VirtualLoopbackAudioProcessorEditor (Virtua
     statusLabel.setColour (juce::Label::textColourId, juce::Colours::white);
     addAndMakeVisible (statusLabel);
 
-    meterLabel.setText (juce::String (L"出力レベル"), juce::dontSendNotification);
+    meterLabel.setText (juce::String (L"出力レベル (dB)"), juce::dontSendNotification);
     meterLabel.setFont (juce::Font (juce::FontOptions (12.0f)));
     meterLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.7f));
     addAndMakeVisible (meterLabel);
@@ -115,7 +115,7 @@ void VirtualLoopbackAudioProcessorEditor::paint (juce::Graphics& g)
         auto filled = meterBounds;
         filled.setWidth (juce::jlimit (0, meterBounds.getWidth(),
                                        (int) std::round (meterLevel * (float) meterBounds.getWidth())));
-        g.setColour (meterLevel > 0.9f ? juce::Colours::red.brighter (0.2f)
+        g.setColour (meterLevel > 0.95f ? juce::Colours::red.brighter (0.2f)
                                        : juce::Colour (0xff5ad67c));
         g.fillRoundedRectangle (filled.toFloat(), 3.0f);
 
@@ -184,7 +184,12 @@ void VirtualLoopbackAudioProcessorEditor::updateStatus()
 
 void VirtualLoopbackAudioProcessorEditor::timerCallback()
 {
-    meterLevel = 0.75f * meterLevel + 0.25f * processor.getInputPeak();
+    // Map peak to a DAW-like dB meter (-60 dB .. 0 dB). Linear amplitude
+    // made the bar look quieter than Cubase/Logic track meters.
+    const float peak = processor.getInputPeak();
+    const float db = juce::Decibels::gainToDecibels (peak, -60.0f);
+    const float dbNorm = juce::jlimit (0.0f, 1.0f, (db + 60.0f) / 60.0f);
+    meterLevel = 0.75f * meterLevel + 0.25f * dbNorm;
     updateStatus();
     captureToggle.setToggleState (processor.captureEnabledParam->get(), juce::dontSendNotification);
     muteToggle.setToggleState (processor.muteParam->get(), juce::dontSendNotification);
