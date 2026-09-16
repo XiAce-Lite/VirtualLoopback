@@ -1,15 +1,20 @@
 #include "PluginEditor.h"
 
+#if JUCE_WINDOWS
+ #include "ProcessAllowlistDialog.h"
+#endif
+
 VirtualLoopbackAudioProcessorEditor::VirtualLoopbackAudioProcessorEditor (VirtualLoopbackAudioProcessor& p)
     : AudioProcessorEditor (&p), processor (p)
 {
-    setSize (540, 340);
-    setResizeLimits (500, 300, 900, 600);
+    setSize (560, 360);
+    setResizeLimits (520, 320, 900, 640);
     setResizable (true, false);
 
     // JUCE の String(const char*) は ASCII 専用。日本語は wchar_t / UTF-8 明示が必須。
     refreshButton.setButtonText (juce::String (L"更新"));
     restartButton.setButtonText (juce::String (L"再起動"));
+    allowlistButton.setButtonText (juce::String (L"追加プロセス…"));
     captureToggle.setButtonText (juce::String (L"キャプチャ"));
     muteToggle.setButtonText (juce::String (L"ミュート"));
 
@@ -25,7 +30,7 @@ VirtualLoopbackAudioProcessorEditor::VirtualLoopbackAudioProcessorEditor (Virtua
                        juce::dontSendNotification);
 #else
     hintLabel.setText (juce::String (L"既定は「システム再生音」。再生中のアプリは「アプリ: …」で個別に選べます。\n"
-                                     L"デバイス指定時は、SYNCROOM / DAW のモニター戻りが出ているデバイスは選ばないでください。"),
+                                     L"セッションが無いアプリは「追加プロセス…」でプロセス名を登録できます。"),
                        juce::dontSendNotification);
 #endif
     hintLabel.setFont (juce::Font (juce::FontOptions (13.0f)));
@@ -54,6 +59,13 @@ VirtualLoopbackAudioProcessorEditor::VirtualLoopbackAudioProcessorEditor (Virtua
         updateStatus();
     };
     addAndMakeVisible (restartButton);
+
+#if JUCE_WINDOWS
+    allowlistButton.onClick = [this] { openAllowlistDialog(); };
+    addAndMakeVisible (allowlistButton);
+#else
+    allowlistButton.setVisible (false);
+#endif
 
     captureToggle.setToggleState (processor.captureEnabledParam->get(), juce::dontSendNotification);
     captureToggle.onClick = [this]
@@ -148,7 +160,12 @@ void VirtualLoopbackAudioProcessorEditor::resized()
     row.removeFromRight (8);
     deviceBox.setBounds (row);
 
-    r.removeFromTop (12);
+    r.removeFromTop (10);
+#if JUCE_WINDOWS
+    allowlistButton.setBounds (r.removeFromTop (26).removeFromLeft (140));
+    r.removeFromTop (8);
+#endif
+
     auto toggles = r.removeFromTop (28);
     captureToggle.setBounds (toggles.removeFromLeft (120));
     muteToggle.setBounds (toggles.removeFromLeft (100));
@@ -160,6 +177,28 @@ void VirtualLoopbackAudioProcessorEditor::resized()
 
     r.removeFromTop (10);
     statusLabel.setBounds (r.removeFromTop (24));
+}
+
+void VirtualLoopbackAudioProcessorEditor::openAllowlistDialog()
+{
+#if JUCE_WINDOWS
+    auto* content = new ProcessAllowlistDialog();
+    content->onSaved = [this]
+    {
+        processor.refreshDeviceList();
+        rebuildDeviceList();
+        updateStatus();
+    };
+
+    juce::DialogWindow::LaunchOptions opts;
+    opts.content.setOwned (content);
+    opts.dialogTitle = "VirtualLoopback";
+    opts.dialogBackgroundColour = juce::Colour (0xff1e1f24);
+    opts.escapeKeyTriggersCloseButton = true;
+    opts.useNativeTitleBar = true;
+    opts.resizable = false;
+    opts.launchAsync();
+#endif
 }
 
 void VirtualLoopbackAudioProcessorEditor::rebuildDeviceList()

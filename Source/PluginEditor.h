@@ -18,12 +18,14 @@ private:
     void timerCallback() override;
     void rebuildDeviceList();
     void updateStatus();
+    void openAllowlistDialog();
 
     VirtualLoopbackAudioProcessor& processor;
 
     juce::ComboBox deviceBox;
     juce::TextButton refreshButton;
     juce::TextButton restartButton;
+    juce::TextButton allowlistButton;
     juce::ToggleButton captureToggle;
     juce::ToggleButton muteToggle;
     juce::Slider volumeSlider;

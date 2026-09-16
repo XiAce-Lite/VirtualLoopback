@@ -12,6 +12,8 @@
  #define _WIN32_WINNT 0x0A00
 #endif
 
+#include "AppProcessAllowlist.h"
+
 #include <objbase.h>
 #include <objidlbase.h>
 #include <mmdeviceapi.h>
@@ -133,6 +135,38 @@ namespace
         return result;
     }
 
+    juce::Array<DWORD> findPidsByProcessName (const juce::String& processNameWithoutExt)
+    {
+        juce::Array<DWORD> pids;
+        if (processNameWithoutExt.isEmpty())
+            return pids;
+
+        const auto want = processNameWithoutExt.toLowerCase();
+        HANDLE snap = CreateToolhelp32Snapshot (TH32CS_SNAPPROCESS, 0);
+        if (snap == INVALID_HANDLE_VALUE)
+            return pids;
+
+        PROCESSENTRY32W entry {};
+        entry.dwSize = sizeof (entry);
+
+        if (Process32FirstW (snap, &entry))
+        {
+            do
+            {
+                auto exe = juce::String (entry.szExeFile);
+                if (exe.endsWithIgnoreCase (".exe"))
+                    exe = exe.dropLastCharacters (4);
+
+                if (exe.equalsIgnoreCase (want) && entry.th32ProcessID != 0)
+                    pids.add (entry.th32ProcessID);
+            }
+            while (Process32NextW (snap, &entry));
+        }
+
+        CloseHandle (snap);
+        return pids;
+    }
+
     juce::String makePidCaptureId (DWORD pid)
     {
         return juce::String (WasapiLoopbackCapture::pidIdPrefix) + juce::String ((juce::uint32) pid);
@@ -144,11 +178,18 @@ namespace
         return juce::String (WasapiLoopbackCapture::appIdPrefix) + key;
     }
 
+    bool isWeakDisplayName (const juce::String& name)
+    {
+        return name.isEmpty()
+            || name.startsWithIgnoreCase ("PID ")
+            || name == "."
+            || name.startsWithIgnoreCase ("@%")
+            || name == juce::String (L"不明なアプリ");
+    }
+
     juce::String displayNameForProcess (DWORD pid, const juce::String& sessionName, const juce::String& imagePath)
     {
-        if (sessionName.isNotEmpty()
-            && ! sessionName.startsWithIgnoreCase ("@%")
-            && sessionName != ".")
+        if (! isWeakDisplayName (sessionName))
             return sessionName;
 
         if (imagePath.isNotEmpty())
@@ -158,22 +199,38 @@ namespace
         if (exeName.isNotEmpty())
             return juce::File (exeName).getFileNameWithoutExtension();
 
-        return "PID " + juce::String ((juce::uint32) pid);
+        // Last resort: never show a bare PID in the device list.
+        return juce::String (L"不明なアプリ");
+    }
+
+    bool looksLikeSyncRoomDestination (const juce::String& text)
+    {
+        // Hidden policy: Yamaha SYNCROOM / SYNCROOM2 are loopback destinations.
+        // Do NOT treat SyncRoomChatTool* (or similar companions) as destinations.
+        if (text.isEmpty())
+            return false;
+
+        auto lower = text.toLowerCase().replaceCharacter ('/', '\\');
+        if (lower.contains ("chattool") || lower.contains ("syncroomchat"))
+            return false;
+
+        const auto base = juce::File (lower).getFileNameWithoutExtension();
+        if (base == "syncroom" || base == "syncroom2")
+            return true;
+
+        if (lower.contains ("\\syncroom2\\") || lower.contains ("\\syncroom\\"))
+            return true;
+
+        return false;
     }
 
     bool looksLikeSyncRoom (const juce::String& sessionName, const juce::String& imagePath, DWORD pid)
     {
-        // Hidden: SYNCROOM* is the loopback destination, never a capture target.
-        auto matches = [] (const juce::String& text)
-        {
-            return text.containsIgnoreCase ("syncroom");
-        };
-
-        if (matches (sessionName) || matches (imagePath))
+        if (looksLikeSyncRoomDestination (sessionName) || looksLikeSyncRoomDestination (imagePath))
             return true;
 
         const auto exeName = getProcessExeNameFromSnapshot (pid);
-        return matches (exeName);
+        return looksLikeSyncRoomDestination (exeName);
     }
 
     juce::String makeAppKeyFromPath (const juce::String& imagePath)
@@ -205,18 +262,43 @@ namespace
         if (exeName.isNotEmpty())
             return makeAppKeyFromExeName (exeName);
 
-        const auto pretty = displayNameForProcess (pid, sessionName, imagePath).toLowerCase();
-        if (pretty.isNotEmpty())
-            return juce::String (WasapiLoopbackCapture::appIdPrefix) + "name:" + pretty;
+        const auto pretty = displayNameForProcess (pid, sessionName, imagePath);
+        if (pretty.isNotEmpty() && ! isWeakDisplayName (pretty))
+            return juce::String (WasapiLoopbackCapture::appIdPrefix) + "name:" + pretty.toLowerCase();
 
-        return makePidCaptureId (pid);
+        // Stable-enough fallback so the UI never depends on a raw PID label.
+        return juce::String (WasapiLoopbackCapture::appIdPrefix) + "pid:" + juce::String ((juce::uint32) pid);
+    }
+
+    juce::String exeStemFromGroupKey (const juce::String& groupKey)
+    {
+        if (! groupKey.startsWith (WasapiLoopbackCapture::appIdPrefix))
+            return {};
+
+        const auto rest = groupKey.fromFirstOccurrenceOf (WasapiLoopbackCapture::appIdPrefix, false, false);
+        if (rest.startsWith ("exe:"))
+        {
+            auto name = rest.fromFirstOccurrenceOf ("exe:", false, false);
+            if (name.endsWithIgnoreCase (".exe"))
+                name = name.dropLastCharacters (4);
+            return name;
+        }
+
+        if (rest.startsWith ("pid:") || rest.startsWith ("name:"))
+            return {};
+
+        if (rest.containsChar ('/') || rest.containsChar ('\\'))
+            return juce::File (rest.replaceCharacter ('/', '\\')).getFileNameWithoutExtension();
+
+        return {};
     }
 
     void mergeAppCandidate (juce::Array<AppSessionCandidate>& apps,
                             juce::StringArray& seenKeys,
                             const AppSessionCandidate& candidate)
     {
-        if (candidate.groupKey.isEmpty() || candidate.pid == 0)
+        // pid == 0 is allowed for allowlisted-but-not-running placeholders.
+        if (candidate.groupKey.isEmpty())
             return;
 
         const int existing = seenKeys.indexOf (candidate.groupKey);
@@ -228,15 +310,65 @@ namespace
         }
 
         auto& prev = apps.getReference (existing);
+        const auto keptName = prev.displayName;
+        const auto keptPid = prev.pid;
+
         // Prefer an actively rendering session's PID (Discord / multi-process apps).
-        if (candidate.isActive && ! prev.isActive)
+        if (candidate.isActive && ! prev.isActive && candidate.pid != 0)
         {
             prev = candidate;
+            if (isWeakDisplayName (prev.displayName) && ! isWeakDisplayName (keptName))
+                prev.displayName = keptName;
             return;
         }
 
-        if (candidate.isActive == prev.isActive && candidate.displayName.length() > prev.displayName.length())
+        if (prev.pid == 0 && candidate.pid != 0)
+            prev.pid = candidate.pid;
+        else if (candidate.pid == 0 && prev.pid == 0)
+            prev.pid = keptPid;
+
+        if (isWeakDisplayName (prev.displayName) && ! isWeakDisplayName (candidate.displayName))
             prev.displayName = candidate.displayName;
+        else if (candidate.isActive == prev.isActive
+                 && ! isWeakDisplayName (candidate.displayName)
+                 && candidate.displayName.length() > prev.displayName.length())
+            prev.displayName = candidate.displayName;
+    }
+
+    void upgradeOrAddAllowlistedCandidate (juce::Array<AppSessionCandidate>& apps,
+                                           juce::StringArray& seenKeys,
+                                           const juce::String& processName,
+                                           DWORD pid)
+    {
+        if (processName.isEmpty())
+            return;
+
+        // Prefer upgrading an existing session entry that is clearly the same exe,
+        // so we don't leave a sibling "不明なアプリ" row behind.
+        for (int i = 0; i < apps.size(); ++i)
+        {
+            auto& existing = apps.getReference (i);
+            const auto stem = exeStemFromGroupKey (existing.groupKey);
+            const bool sameExe = stem.equalsIgnoreCase (processName)
+                              || existing.displayName.equalsIgnoreCase (processName)
+                              || (pid != 0 && existing.pid == pid);
+            if (! sameExe)
+                continue;
+
+            existing.displayName = processName;
+
+            if (pid != 0)
+                existing.pid = pid;
+
+            return;
+        }
+
+        AppSessionCandidate candidate;
+        candidate.groupKey = makeAppKeyFromExeName (processName + ".exe");
+        candidate.displayName = processName;
+        candidate.pid = pid;
+        candidate.isActive = false;
+        mergeAppCandidate (apps, seenKeys, candidate);
     }
 
     WAVEFORMATEX makeProcessLoopbackFormat()
@@ -259,6 +391,13 @@ namespace
         if (captureId.startsWith (WasapiLoopbackCapture::pidIdPrefix))
         {
             const auto text = captureId.fromFirstOccurrenceOf (WasapiLoopbackCapture::pidIdPrefix, false, false);
+            return (DWORD) text.getLargeIntValue();
+        }
+
+        const auto appPidPrefix = juce::String (WasapiLoopbackCapture::appIdPrefix) + "pid:";
+        if (captureId.startsWith (appPidPrefix))
+        {
+            const auto text = captureId.fromFirstOccurrenceOf (appPidPrefix, false, false);
             return (DWORD) text.getLargeIntValue();
         }
 
@@ -636,7 +775,75 @@ namespace
             }
         }
 
-        return bestPid;
+        if (bestPid != 0)
+            return bestPid;
+
+        // Allowlisted apps may have no audio session yet — resolve by exe name.
+        if (appKey.startsWith (WasapiLoopbackCapture::appIdPrefix))
+        {
+            const auto rest = appKey.fromFirstOccurrenceOf (WasapiLoopbackCapture::appIdPrefix, false, false);
+            juce::String processName;
+
+            if (rest.startsWith ("exe:"))
+            {
+                processName = rest.fromFirstOccurrenceOf ("exe:", false, false);
+                if (processName.endsWithIgnoreCase (".exe"))
+                    processName = processName.dropLastCharacters (4);
+            }
+            else if (rest.startsWith ("pid:"))
+            {
+                return (DWORD) rest.fromFirstOccurrenceOf ("pid:", false, false).getLargeIntValue();
+            }
+            else if (rest.containsChar ('/'))
+            {
+                processName = juce::File (rest.replaceCharacter ('/', '\\')).getFileNameWithoutExtension();
+            }
+
+            const auto pids = findPidsByProcessName (processName);
+            if (! pids.isEmpty())
+                return pids.getFirst();
+        }
+
+        return 0;
+    }
+
+    void appendAllowlistedRunningProcesses (juce::Array<AppSessionCandidate>& apps, juce::StringArray& seenKeys)
+    {
+        auto& allowlist = AppProcessAllowlist::get();
+        allowlist.reload();
+        if (! allowlist.isEnabled())
+            return;
+
+        const DWORD selfPid = GetCurrentProcessId();
+
+        for (const auto& processName : allowlist.getProcessNames())
+        {
+            if (looksLikeSyncRoomDestination (processName))
+                continue;
+
+            const auto pids = findPidsByProcessName (processName);
+
+            DWORD chosenPid = 0;
+            for (const auto pid : pids)
+            {
+                if (pid == 0 || pid == selfPid)
+                    continue;
+
+                const auto imagePath = getProcessImagePath (pid);
+                const auto exeName = getProcessExeNameFromSnapshot (pid);
+                if (looksLikeSyncRoomDestination (imagePath)
+                    || looksLikeSyncRoomDestination (exeName))
+                    continue;
+
+                chosenPid = pid;
+                if (imagePath.isNotEmpty())
+                    break;
+            }
+
+            // Always surface allowlisted names (running or not) so the capture
+            // dropdown reflects what the user just saved.
+            upgradeOrAddAllowlistedCandidate (apps, seenKeys, processName, chosenPid);
+        }
     }
 }
 
@@ -756,11 +963,18 @@ juce::Array<WasapiLoopbackCapture::DeviceInfo> WasapiLoopbackCapture::getRenderD
             }
         }
 
+        appendAllowlistedRunningProcesses (candidates, seenAppKeys);
+
         for (const auto& c : candidates)
         {
+            if (isWeakDisplayName (c.displayName))
+                continue;
+
             DeviceInfo info;
             info.id = c.groupKey;
             info.name = juce::String (L"アプリ: ") + c.displayName;
+            if (c.pid == 0)
+                info.name += juce::String (L" （未起動）");
             apps.add (info);
         }
 

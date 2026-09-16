@@ -14,6 +14,12 @@
             file="Source/WasapiLoopbackCapture.h"/>
       <FILE id="VLCapC" name="WasapiLoopbackCapture.cpp" compile="1" resource="0"
             file="Source/WasapiLoopbackCapture.cpp"/>
+      <FILE id="VLAllowH" name="AppProcessAllowlist.h" compile="0" resource="0"
+            file="Source/AppProcessAllowlist.h"/>
+      <FILE id="VLAllowC" name="AppProcessAllowlist.cpp" compile="1" resource="0"
+            file="Source/AppProcessAllowlist.cpp"/>
+      <FILE id="VLAllowDlg" name="ProcessAllowlistDialog.h" compile="0" resource="0"
+            file="Source/ProcessAllowlistDialog.h"/>
       <FILE id="VLMacH" name="CoreAudioTapCapture.h" compile="0" resource="0"
             file="Source/CoreAudioTapCapture.h"/>
       <FILE id="VLMacC" name="CoreAudioTapCapture.mm" compile="1" resource="0"
