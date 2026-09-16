@@ -164,6 +164,8 @@ void VirtualLoopbackAudioProcessorEditor::resized()
 
 void VirtualLoopbackAudioProcessorEditor::rebuildDeviceList()
 {
+    const auto previousSelectedId = processor.getSelectedDeviceId();
+
     deviceBox.clear (juce::dontSendNotification);
     const auto names = processor.getRenderDeviceNames();
     for (int i = 0; i < names.size(); ++i)
@@ -172,6 +174,11 @@ void VirtualLoopbackAudioProcessorEditor::rebuildDeviceList()
     const int idx = processor.getSelectedDeviceIndex();
     if (idx >= 0)
         deviceBox.setSelectedItemIndex (idx, juce::dontSendNotification);
+
+    // Do not fall back to item 0 visually — that made it look like system mix
+    // while the saved app selection was still active.
+    if (previousSelectedId == processor.getSelectedDeviceId())
+        deviceBox.repaint();
 }
 
 void VirtualLoopbackAudioProcessorEditor::updateStatus()
@@ -190,6 +197,16 @@ void VirtualLoopbackAudioProcessorEditor::timerCallback()
     const float db = juce::Decibels::gainToDecibels (peak, -60.0f);
     const float dbNorm = juce::jlimit (0.0f, 1.0f, (db + 60.0f) / 60.0f);
     meterLevel = 0.75f * meterLevel + 0.25f * dbNorm;
+
+    // ~2s at 12 Hz: if the chosen app starts playing after load, pick it up
+    // without forcing the user to toggle device → app.
+    if (++captureRetryCounter >= 24)
+    {
+        captureRetryCounter = 0;
+        if (processor.retryCaptureIfNeeded())
+            rebuildDeviceList();
+    }
+
     updateStatus();
     captureToggle.setToggleState (processor.captureEnabledParam->get(), juce::dontSendNotification);
     muteToggle.setToggleState (processor.muteParam->get(), juce::dontSendNotification);

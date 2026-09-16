@@ -161,6 +161,84 @@ namespace
         return "PID " + juce::String ((juce::uint32) pid);
     }
 
+    bool looksLikeSyncRoom (const juce::String& sessionName, const juce::String& imagePath, DWORD pid)
+    {
+        // Hidden: SYNCROOM* is the loopback destination, never a capture target.
+        auto matches = [] (const juce::String& text)
+        {
+            return text.containsIgnoreCase ("syncroom");
+        };
+
+        if (matches (sessionName) || matches (imagePath))
+            return true;
+
+        const auto exeName = getProcessExeNameFromSnapshot (pid);
+        return matches (exeName);
+    }
+
+    juce::String makeAppKeyFromPath (const juce::String& imagePath)
+    {
+        return juce::String (WasapiLoopbackCapture::appIdPrefix)
+             + imagePath.replaceCharacter ('\\', '/').toLowerCase();
+    }
+
+    juce::String makeAppKeyFromExeName (const juce::String& exeName)
+    {
+        return juce::String (WasapiLoopbackCapture::appIdPrefix) + "exe:"
+             + juce::File (exeName).getFileName().toLowerCase();
+    }
+
+    struct AppSessionCandidate
+    {
+        juce::String groupKey;
+        juce::String displayName;
+        DWORD pid = 0;
+        bool isActive = false;
+    };
+
+    juce::String groupKeyForSession (DWORD pid, const juce::String& sessionName, const juce::String& imagePath)
+    {
+        if (imagePath.isNotEmpty())
+            return makeAppKeyFromPath (imagePath);
+
+        const auto exeName = getProcessExeNameFromSnapshot (pid);
+        if (exeName.isNotEmpty())
+            return makeAppKeyFromExeName (exeName);
+
+        const auto pretty = displayNameForProcess (pid, sessionName, imagePath).toLowerCase();
+        if (pretty.isNotEmpty())
+            return juce::String (WasapiLoopbackCapture::appIdPrefix) + "name:" + pretty;
+
+        return makePidCaptureId (pid);
+    }
+
+    void mergeAppCandidate (juce::Array<AppSessionCandidate>& apps,
+                            juce::StringArray& seenKeys,
+                            const AppSessionCandidate& candidate)
+    {
+        if (candidate.groupKey.isEmpty() || candidate.pid == 0)
+            return;
+
+        const int existing = seenKeys.indexOf (candidate.groupKey);
+        if (existing < 0)
+        {
+            seenKeys.add (candidate.groupKey);
+            apps.add (candidate);
+            return;
+        }
+
+        auto& prev = apps.getReference (existing);
+        // Prefer an actively rendering session's PID (Discord / multi-process apps).
+        if (candidate.isActive && ! prev.isActive)
+        {
+            prev = candidate;
+            return;
+        }
+
+        if (candidate.isActive == prev.isActive && candidate.displayName.length() > prev.displayName.length())
+            prev.displayName = candidate.displayName;
+    }
+
     WAVEFORMATEX makeProcessLoopbackFormat()
     {
         // Process-loopback virtual device does not support GetMixFormat.
@@ -412,7 +490,9 @@ namespace
         return result;
     }
 
-    void appendAudioSessions (IMMDevice* device, juce::Array<WasapiLoopbackCapture::DeviceInfo>& apps, juce::StringArray& seenKeys)
+    void appendAudioSessions (IMMDevice* device,
+                              juce::Array<AppSessionCandidate>& apps,
+                              juce::StringArray& seenKeys)
     {
         if (device == nullptr)
             return;
@@ -439,7 +519,8 @@ namespace
                 continue;
 
             AudioSessionState sessionState = AudioSessionStateInactive;
-            if (FAILED (control->GetState (&sessionState)) || sessionState != AudioSessionStateActive)
+            const HRESULT stateHr = control->GetState (&sessionState);
+            if (SUCCEEDED (stateHr) && sessionState == AudioSessionStateExpired)
                 continue;
 
             WasapiComPtr<IAudioSessionControl2> control2;
@@ -447,8 +528,13 @@ namespace
                                                   (void**) control2.resetAndGetAddressOf())) || ! control2)
                 continue;
 
+            if (control2->IsSystemSoundsSession() == S_OK)
+                continue;
+
             DWORD pid = 0;
-            if (FAILED (control2->GetProcessId (&pid)) || pid == 0 || pid == selfPid)
+            const HRESULT pidHr = control2->GetProcessId (&pid);
+            // AUDCLNT_S_NO_SINGLE_PROCESS is a success code with pid==0 for cross-process sessions.
+            if (FAILED (pidHr) || pid == 0 || pid == selfPid)
                 continue;
 
             LPWSTR displayNameW = nullptr;
@@ -460,19 +546,97 @@ namespace
             }
 
             const auto imagePath = getProcessImagePath (pid);
-            // Prefer a stable PID id: OpenProcess can fail for protected apps, and
-            // process-loopback needs the exact session PID anyway.
-            const auto id = makePidCaptureId (pid);
-            if (seenKeys.contains (id))
+            if (looksLikeSyncRoom (sessionName, imagePath, pid))
                 continue;
 
-            seenKeys.add (id);
-
-            WasapiLoopbackCapture::DeviceInfo info;
-            info.id = id;
-            info.name = juce::String (L"アプリ: ") + displayNameForProcess (pid, sessionName, imagePath);
-            apps.add (info);
+            AppSessionCandidate candidate;
+            candidate.groupKey = groupKeyForSession (pid, sessionName, imagePath);
+            candidate.displayName = displayNameForProcess (pid, sessionName, imagePath);
+            candidate.pid = pid;
+            candidate.isActive = (SUCCEEDED (stateHr) && sessionState == AudioSessionStateActive);
+            mergeAppCandidate (apps, seenKeys, candidate);
         }
+    }
+
+    DWORD findBestPidForAppKey (IMMDeviceEnumerator* enumerator, const juce::String& appKey)
+    {
+        if (enumerator == nullptr || appKey.isEmpty())
+            return 0;
+
+        DWORD bestPid = 0;
+        bool bestActive = false;
+
+        WasapiComPtr<IMMDeviceCollection> collection;
+        if (FAILED (enumerator->EnumAudioEndpoints (eRender,
+                                                    DEVICE_STATE_ACTIVE | DEVICE_STATE_UNPLUGGED,
+                                                    collection.resetAndGetAddressOf())) || ! collection)
+            return 0;
+
+        UINT count = 0;
+        collection->GetCount (&count);
+
+        for (UINT i = 0; i < count; ++i)
+        {
+            WasapiComPtr<IMMDevice> device;
+            if (FAILED (collection->Item (i, device.resetAndGetAddressOf())) || ! device)
+                continue;
+
+            WasapiComPtr<IAudioSessionManager2> manager;
+            if (FAILED (device->Activate (__uuidof (IAudioSessionManager2), CLSCTX_ALL, nullptr,
+                                          (void**) manager.resetAndGetAddressOf())) || ! manager)
+                continue;
+
+            WasapiComPtr<IAudioSessionEnumerator> sessions;
+            if (FAILED (manager->GetSessionEnumerator (sessions.resetAndGetAddressOf())) || ! sessions)
+                continue;
+
+            int sessionCount = 0;
+            if (FAILED (sessions->GetCount (&sessionCount)))
+                continue;
+
+            for (int s = 0; s < sessionCount; ++s)
+            {
+                WasapiComPtr<IAudioSessionControl> control;
+                if (FAILED (sessions->GetSession (s, control.resetAndGetAddressOf())) || ! control)
+                    continue;
+
+                AudioSessionState sessionState = AudioSessionStateInactive;
+                const HRESULT stateHr = control->GetState (&sessionState);
+                if (SUCCEEDED (stateHr) && sessionState == AudioSessionStateExpired)
+                    continue;
+
+                WasapiComPtr<IAudioSessionControl2> control2;
+                if (FAILED (control->QueryInterface (__uuidof (IAudioSessionControl2),
+                                                      (void**) control2.resetAndGetAddressOf())) || ! control2)
+                    continue;
+
+                DWORD pid = 0;
+                if (FAILED (control2->GetProcessId (&pid)) || pid == 0)
+                    continue;
+
+                LPWSTR displayNameW = nullptr;
+                juce::String sessionName;
+                if (SUCCEEDED (control->GetDisplayName (&displayNameW)) && displayNameW != nullptr)
+                {
+                    sessionName = juce::String (displayNameW);
+                    CoTaskMemFree (displayNameW);
+                }
+
+                const auto imagePath = getProcessImagePath (pid);
+                const auto key = groupKeyForSession (pid, sessionName, imagePath);
+                if (! key.equalsIgnoreCase (appKey))
+                    continue;
+
+                const bool active = (SUCCEEDED (stateHr) && sessionState == AudioSessionStateActive);
+                if (bestPid == 0 || (active && ! bestActive))
+                {
+                    bestPid = pid;
+                    bestActive = active;
+                }
+            }
+        }
+
+        return bestPid;
     }
 }
 
@@ -570,12 +734,15 @@ juce::Array<WasapiLoopbackCapture::DeviceInfo> WasapiLoopbackCapture::getRenderD
     }
 
     juce::Array<DeviceInfo> apps;
+    juce::Array<AppSessionCandidate> candidates;
     juce::StringArray seenAppKeys;
 
     if (supportsApplicationLoopback())
     {
         WasapiComPtr<IMMDeviceCollection> collectionForSessions;
-        if (SUCCEEDED (enumerator->EnumAudioEndpoints (eRender, DEVICE_STATE_ACTIVE,
+        // Include unplugged endpoints too: some apps keep sessions there briefly.
+        if (SUCCEEDED (enumerator->EnumAudioEndpoints (eRender,
+                                                       DEVICE_STATE_ACTIVE | DEVICE_STATE_UNPLUGGED,
                                                        collectionForSessions.resetAndGetAddressOf())))
         {
             UINT sessionDeviceCount = 0;
@@ -585,8 +752,16 @@ juce::Array<WasapiLoopbackCapture::DeviceInfo> WasapiLoopbackCapture::getRenderD
             {
                 WasapiComPtr<IMMDevice> device;
                 if (SUCCEEDED (collectionForSessions->Item (i, device.resetAndGetAddressOf())) && device)
-                    appendAudioSessions (device.get(), apps, seenAppKeys);
+                    appendAudioSessions (device.get(), candidates, seenAppKeys);
             }
+        }
+
+        for (const auto& c : candidates)
+        {
+            DeviceInfo info;
+            info.id = c.groupKey;
+            info.name = juce::String (L"アプリ: ") + c.displayName;
+            apps.add (info);
         }
 
         struct AppNameComparator
@@ -723,8 +898,6 @@ bool WasapiLoopbackCapture::openDevice (const juce::String& deviceId)
 
         if (matchedPid == 0 && effectiveId.startsWith (appIdPrefix))
         {
-            const auto appKey = effectiveId.fromFirstOccurrenceOf (appIdPrefix, false, false);
-
             WasapiComPtr<IMMDeviceEnumerator> enumerator;
             HRESULT hr = CoCreateInstance (__uuidof (MMDeviceEnumerator), nullptr, CLSCTX_ALL,
                                            __uuidof (IMMDeviceEnumerator),
@@ -735,60 +908,7 @@ bool WasapiLoopbackCapture::openDevice (const juce::String& deviceId)
                 return false;
             }
 
-            WasapiComPtr<IMMDeviceCollection> collection;
-            if (SUCCEEDED (enumerator->EnumAudioEndpoints (eRender, DEVICE_STATE_ACTIVE,
-                                                           collection.resetAndGetAddressOf())))
-            {
-                UINT count = 0;
-                collection->GetCount (&count);
-
-                for (UINT i = 0; i < count && matchedPid == 0; ++i)
-                {
-                    WasapiComPtr<IMMDevice> device;
-                    if (FAILED (collection->Item (i, device.resetAndGetAddressOf())) || ! device)
-                        continue;
-
-                    WasapiComPtr<IAudioSessionManager2> manager;
-                    if (FAILED (device->Activate (__uuidof (IAudioSessionManager2), CLSCTX_ALL, nullptr,
-                                                  (void**) manager.resetAndGetAddressOf())) || ! manager)
-                        continue;
-
-                    WasapiComPtr<IAudioSessionEnumerator> sessions;
-                    if (FAILED (manager->GetSessionEnumerator (sessions.resetAndGetAddressOf())) || ! sessions)
-                        continue;
-
-                    int sessionCount = 0;
-                    if (FAILED (sessions->GetCount (&sessionCount)))
-                        continue;
-
-                    for (int s = 0; s < sessionCount; ++s)
-                    {
-                        WasapiComPtr<IAudioSessionControl> control;
-                        if (FAILED (sessions->GetSession (s, control.resetAndGetAddressOf())) || ! control)
-                            continue;
-
-                        WasapiComPtr<IAudioSessionControl2> control2;
-                        if (FAILED (control->QueryInterface (__uuidof (IAudioSessionControl2),
-                                                              (void**) control2.resetAndGetAddressOf())) || ! control2)
-                            continue;
-
-                        DWORD pid = 0;
-                        if (FAILED (control2->GetProcessId (&pid)) || pid == 0)
-                            continue;
-
-                        const auto path = getProcessImagePath (pid);
-                        if (path.isEmpty())
-                            continue;
-
-                        if (makeAppCaptureId (path).fromFirstOccurrenceOf (appIdPrefix, false, false)
-                            .equalsIgnoreCase (appKey))
-                        {
-                            matchedPid = pid;
-                            break;
-                        }
-                    }
-                }
-            }
+            matchedPid = findBestPidForAppKey (enumerator.get(), effectiveId);
         }
 
         if (matchedPid == 0)

@@ -174,7 +174,8 @@ namespace
         for (auto proc : getProcessObjectList())
         {
             const auto bid = getProcessBundleId (proc).toLowerCase();
-            if (bid.contains ("syncroom"))
+            const auto name = getStringProperty (proc, kAudioObjectPropertyName).toLowerCase();
+            if (bid.contains ("syncroom") || name.contains ("syncroom"))
             {
                 NSNumber* value = @(proc);
                 if (! [excluded containsObject: value])
@@ -377,7 +378,9 @@ juce::Array<CoreAudioTapCapture::DeviceInfo> CoreAudioTapCapture::getRenderDevic
             name = "PID " + juce::String ((int) pid);
 
         const auto lowerBundle = bundle.toLowerCase();
-        if (lowerBundle.contains ("syncroom") || lowerBundle.contains ("virtualloopback"))
+        const auto lowerName = name.toLowerCase();
+        if (lowerBundle.contains ("syncroom") || lowerName.contains ("syncroom")
+            || lowerBundle.contains ("virtualloopback") || lowerName.contains ("virtualloopback"))
             continue;
 
         DeviceInfo info;

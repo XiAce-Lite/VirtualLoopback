@@ -75,19 +75,29 @@ public:
     void setSelectedDeviceId (const juce::String& deviceId);
     void refreshDeviceList();
     bool restartCapture();
+    /** If capture is enabled but not running (e.g. app started after load), try again.
+        Returns true if the device list UI should be rebuilt. */
+    bool retryCaptureIfNeeded();
 
     bool isCaptureRunning() const;
+    bool isSelectedTargetUnavailable() const;
     juce::String getCaptureStatusText() const;
     float getInputPeak() const;
 
 private:
     void resetResamplerState();
     void pullIntoPending();
+    void rememberSelectedLabelFromDevices();
+    void ensureSelectedTargetVisible();
+    static bool isSystemMixTargetId (const juce::String& id);
+    static bool isAppCaptureTargetId (const juce::String& id);
+    static juce::String stripStatusSuffix (const juce::String& name);
 
     double hostSampleRate = 44100.0;
     int hostBlockSize = 512;
 
     juce::String selectedDeviceId;
+    juce::String selectedDeviceLabel; // display name without （未起動） etc.
     juce::Array<DeviceInfo> devices;
 
 #if JUCE_WINDOWS

@@ -35,6 +35,7 @@ private:
 
     juce::Rectangle<int> meterBounds;
     float meterLevel = 0.0f;
+    int captureRetryCounter = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VirtualLoopbackAudioProcessorEditor)
 };

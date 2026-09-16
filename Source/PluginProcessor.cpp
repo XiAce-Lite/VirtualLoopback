@@ -37,6 +37,8 @@ VirtualLoopbackAudioProcessor::VirtualLoopbackAudioProcessor()
 
     if (selectedDeviceId.isEmpty() && ! devices.isEmpty())
         selectedDeviceId = devices.getReference (0).id;
+
+    rememberSelectedLabelFromDevices();
 }
 
 VirtualLoopbackAudioProcessor::~VirtualLoopbackAudioProcessor()
@@ -323,6 +325,7 @@ void VirtualLoopbackAudioProcessor::getStateInformation (juce::MemoryBlock& dest
 {
     juce::ValueTree state ("VirtualLoopback");
     state.setProperty ("deviceId", selectedDeviceId, nullptr);
+    state.setProperty ("deviceLabel", selectedDeviceLabel, nullptr);
     state.setProperty ("volume", volumeParam != nullptr ? volumeParam->get() : 0.8f, nullptr);
     state.setProperty ("mute", muteParam != nullptr ? muteParam->get() : false, nullptr);
     state.setProperty ("capture", captureEnabledParam != nullptr ? captureEnabledParam->get() : true, nullptr);
@@ -338,6 +341,7 @@ void VirtualLoopbackAudioProcessor::setStateInformation (const void* data, int s
         return;
 
     selectedDeviceId = state.getProperty ("deviceId", selectedDeviceId).toString();
+    selectedDeviceLabel = stripStatusSuffix (state.getProperty ("deviceLabel", selectedDeviceLabel).toString());
 
     if (volumeParam != nullptr)
         *volumeParam = (float) state.getProperty ("volume", 0.8f);
@@ -347,11 +351,127 @@ void VirtualLoopbackAudioProcessor::setStateInformation (const void* data, int s
         *captureEnabledParam = (bool) state.getProperty ("capture", true);
 
     refreshDeviceList();
+    if (selectedDeviceLabel.isEmpty())
+        rememberSelectedLabelFromDevices();
+
     if (captureEnabledParam != nullptr && captureEnabledParam->get())
         restartCapture();
 }
 
 //==============================================================================
+bool VirtualLoopbackAudioProcessor::isSystemMixTargetId (const juce::String& id)
+{
+#if JUCE_WINDOWS
+    return id.isEmpty() || id == WasapiLoopbackCapture::systemMixId;
+#elif JUCE_MAC
+    return id.isEmpty() || id == CoreAudioTapCapture::systemMixId;
+#else
+    juce::ignoreUnused (id);
+    return id.isEmpty();
+#endif
+}
+
+bool VirtualLoopbackAudioProcessor::isAppCaptureTargetId (const juce::String& id)
+{
+#if JUCE_WINDOWS
+    return id.startsWith (WasapiLoopbackCapture::appIdPrefix)
+        || id.startsWith (WasapiLoopbackCapture::pidIdPrefix);
+#elif JUCE_MAC
+    return id.startsWith (CoreAudioTapCapture::appIdPrefix)
+        || id.startsWith (CoreAudioTapCapture::pidIdPrefix);
+#else
+    juce::ignoreUnused (id);
+    return false;
+#endif
+}
+
+juce::String VirtualLoopbackAudioProcessor::stripStatusSuffix (const juce::String& name)
+{
+    auto result = name;
+    const juce::String suffixes[] = {
+        juce::String (L" （未起動）"),
+        juce::String (L" （未接続）"),
+        juce::String (L" （利用不可）"),
+        juce::String (L" （既定）"),
+        juce::String (L" （既定エンドポイント）")
+    };
+
+    for (const auto& suffix : suffixes)
+        if (result.endsWith (suffix))
+            result = result.dropLastCharacters (suffix.length());
+
+    if (result.startsWith (juce::String (L"アプリ: ")))
+        result = result.fromFirstOccurrenceOf (juce::String (L"アプリ: "), false, false);
+    else if (result.startsWith (juce::String (L"デバイス: ")))
+        result = result.fromFirstOccurrenceOf (juce::String (L"デバイス: "), false, false);
+
+    return result.trim();
+}
+
+void VirtualLoopbackAudioProcessor::rememberSelectedLabelFromDevices()
+{
+    for (const auto& d : devices)
+    {
+        if (d.id == selectedDeviceId)
+        {
+            selectedDeviceLabel = stripStatusSuffix (d.name);
+            return;
+        }
+    }
+}
+
+void VirtualLoopbackAudioProcessor::ensureSelectedTargetVisible()
+{
+    if (selectedDeviceId.isEmpty())
+        return;
+
+    for (const auto& d : devices)
+        if (d.id == selectedDeviceId)
+            return;
+
+    // System mix must never become a "未起動" placeholder — re-add the real entry.
+    if (isSystemMixTargetId (selectedDeviceId))
+    {
+#if JUCE_WINDOWS
+        selectedDeviceId = WasapiLoopbackCapture::systemMixId;
+#elif JUCE_MAC
+        selectedDeviceId = CoreAudioTapCapture::systemMixId;
+#endif
+        DeviceInfo systemMix;
+        systemMix.id = selectedDeviceId;
+        systemMix.name = juce::String (L"システム再生音");
+        systemMix.isDefault = true;
+        devices.insert (0, systemMix);
+        selectedDeviceLabel = juce::String (L"システム再生音");
+        return;
+    }
+
+    // Keep the saved selection visible even when the target is not currently available.
+    DeviceInfo placeholder;
+    placeholder.id = selectedDeviceId;
+    placeholder.isDefault = false;
+
+    juce::String label = selectedDeviceLabel;
+    // Guard against a stale label left over from a previous system-mix selection.
+    if (label.isEmpty() || label == juce::String (L"システム再生音"))
+    {
+        label = isAppCaptureTargetId (selectedDeviceId)
+                  ? juce::String (L"指定アプリ")
+                  : juce::String (L"指定デバイス");
+    }
+
+    if (isAppCaptureTargetId (selectedDeviceId))
+        placeholder.name = juce::String (L"アプリ: ") + label + juce::String (L" （未起動）");
+    else
+        placeholder.name = juce::String (L"デバイス: ") + label + juce::String (L" （未接続）");
+
+    int insertAt = 0;
+    if (! devices.isEmpty() && devices.getReference (0).isDefault)
+        insertAt = 1;
+
+    devices.insert (insertAt, placeholder);
+}
+
 juce::StringArray VirtualLoopbackAudioProcessor::getRenderDeviceNames() const
 {
     juce::StringArray names;
@@ -373,7 +493,7 @@ int VirtualLoopbackAudioProcessor::getSelectedDeviceIndex() const
     for (int i = 0; i < devices.size(); ++i)
         if (devices.getReference (i).id == selectedDeviceId)
             return i;
-    return devices.isEmpty() ? -1 : 0;
+    return -1;
 }
 
 void VirtualLoopbackAudioProcessor::setSelectedDeviceByIndex (int index)
@@ -386,12 +506,29 @@ void VirtualLoopbackAudioProcessor::setSelectedDeviceByIndex (int index)
 void VirtualLoopbackAudioProcessor::setSelectedDeviceId (const juce::String& deviceId)
 {
     selectedDeviceId = deviceId;
+
+    bool found = false;
+    for (const auto& d : devices)
+    {
+        if (d.id == selectedDeviceId)
+        {
+            selectedDeviceLabel = stripStatusSuffix (d.name);
+            found = true;
+            break;
+        }
+    }
+
+    if (! found)
+        selectedDeviceLabel.clear();
+
     if (captureEnabledParam != nullptr && captureEnabledParam->get())
         restartCapture();
 }
 
 void VirtualLoopbackAudioProcessor::refreshDeviceList()
 {
+    const bool wasUnavailable = isSelectedTargetUnavailable();
+
 #if JUCE_WINDOWS
     devices = WasapiLoopbackCapture::getRenderDevices();
 #elif JUCE_MAC
@@ -399,6 +536,40 @@ void VirtualLoopbackAudioProcessor::refreshDeviceList()
 #else
     devices.clear();
 #endif
+
+    // Never silently reset the user's saved target to system mix.
+    ensureSelectedTargetVisible();
+
+    if (selectedDeviceId.isEmpty())
+    {
+        for (const auto& d : devices)
+        {
+            if (d.isDefault)
+            {
+                selectedDeviceId = d.id;
+                break;
+            }
+        }
+
+        if (selectedDeviceId.isEmpty() && ! devices.isEmpty())
+            selectedDeviceId = devices.getReference (0).id;
+
+        rememberSelectedLabelFromDevices();
+    }
+    else if (selectedDeviceLabel.isEmpty())
+    {
+        rememberSelectedLabelFromDevices();
+    }
+
+    // If the saved app/device came back, resume capture without requiring a manual re-select.
+    if (captureEnabledParam != nullptr && captureEnabledParam->get())
+    {
+        const bool nowUnavailable = isSelectedTargetUnavailable();
+        if (wasUnavailable && ! nowUnavailable)
+            restartCapture();
+        else if (! nowUnavailable && ! isCaptureRunning())
+            restartCapture();
+    }
 }
 
 bool VirtualLoopbackAudioProcessor::restartCapture()
@@ -418,6 +589,30 @@ bool VirtualLoopbackAudioProcessor::restartCapture()
 #endif
 }
 
+bool VirtualLoopbackAudioProcessor::retryCaptureIfNeeded()
+{
+#if VIRTUALLOOPBACK_HAS_CAPTURE
+    if (captureEnabledParam == nullptr || ! captureEnabledParam->get())
+        return false;
+
+    if (capture.isRunning())
+        return false;
+
+    // App may start playing after project load; refresh sessions and retry quietly.
+    const bool lookedUnavailable = isSelectedTargetUnavailable();
+    refreshDeviceList();
+    const bool listChanged = lookedUnavailable != isSelectedTargetUnavailable()
+                          || lookedUnavailable; // refresh may replace placeholder with live entry
+
+    if (! isSelectedTargetUnavailable() && ! capture.isRunning())
+        restartCapture();
+
+    return listChanged;
+#else
+    return false;
+#endif
+}
+
 bool VirtualLoopbackAudioProcessor::isCaptureRunning() const
 {
 #if VIRTUALLOOPBACK_HAS_CAPTURE
@@ -425,6 +620,22 @@ bool VirtualLoopbackAudioProcessor::isCaptureRunning() const
 #else
     return false;
 #endif
+}
+
+bool VirtualLoopbackAudioProcessor::isSelectedTargetUnavailable() const
+{
+    if (isSystemMixTargetId (selectedDeviceId))
+        return false;
+
+    for (const auto& d : devices)
+    {
+        if (d.id == selectedDeviceId)
+            return d.name.contains (juce::String (L"（未起動）"))
+                || d.name.contains (juce::String (L"（未接続）"))
+                || d.name.contains (juce::String (L"（利用不可）"));
+    }
+
+    return selectedDeviceId.isNotEmpty();
 }
 
 juce::String VirtualLoopbackAudioProcessor::getCaptureStatusText() const
@@ -440,9 +651,20 @@ juce::String VirtualLoopbackAudioProcessor::getCaptureStatusText() const
              + juce::String (capture.getCaptureNumChannels()) + " ch";
     }
 
+    if (isSelectedTargetUnavailable())
+        return juce::String (L"指定アプリは未起動（設定は保持）");
+
     const auto err = capture.getLastError();
     if (err.isNotEmpty())
+    {
+        // Soften "process not found" into the same calm unavailable status.
+        if (err.contains (juce::String (L"プロセスが見つかりません"))
+            || err.containsIgnoreCase ("process not found")
+            || err.containsIgnoreCase ("target process"))
+            return juce::String (L"指定アプリは未起動（設定は保持）");
+
         return juce::String (L"エラー: ") + err;
+    }
 
     return juce::String (L"キャプチャしていません");
 #else
