@@ -115,13 +115,30 @@ namespace
             && alive != 0;
     }
 
-    NSArray<NSNumber*>* processesToExclude()
+    pid_t getProcessPid (AudioObjectID processObject)
     {
-        NSMutableArray<NSNumber*>* excluded = [NSMutableArray array];
+        AudioObjectPropertyAddress address {
+            kAudioProcessPropertyPID,
+            kAudioObjectPropertyScopeGlobal,
+            kAudioObjectPropertyElementMain
+        };
 
-        const AudioObjectID selfProc = translatePidToProcessObject (getpid());
-        if (selfProc != kAudioObjectUnknown)
-            [excluded addObject: @(selfProc)];
+        pid_t pid = 0;
+        UInt32 size = sizeof (pid);
+        if (AudioObjectGetPropertyData (processObject, &address, 0, nullptr, &size, &pid) != noErr)
+            return 0;
+
+        return pid;
+    }
+
+    juce::String getProcessBundleId (AudioObjectID processObject)
+    {
+        return getStringProperty (processObject, kAudioProcessPropertyBundleID);
+    }
+
+    juce::Array<AudioObjectID> getProcessObjectList()
+    {
+        juce::Array<AudioObjectID> result;
 
         AudioObjectPropertyAddress listAddress {
             kAudioHardwarePropertyProcessObjectList,
@@ -132,41 +149,72 @@ namespace
         UInt32 size = 0;
         if (AudioObjectGetPropertyDataSize (kAudioObjectSystemObject, &listAddress, 0, nullptr, &size) != noErr
             || size < sizeof (AudioObjectID))
-            return excluded;
+            return result;
 
         const int count = (int) (size / sizeof (AudioObjectID));
         juce::HeapBlock<AudioObjectID> procs ((size_t) count);
 
         if (AudioObjectGetPropertyData (kAudioObjectSystemObject, &listAddress, 0, nullptr, &size, procs.getData()) != noErr)
-            return excluded;
-
-        AudioObjectPropertyAddress bundleAddress {
-            kAudioProcessPropertyBundleID,
-            kAudioObjectPropertyScopeGlobal,
-            kAudioObjectPropertyElementMain
-        };
+            return result;
 
         for (int i = 0; i < count; ++i)
+            result.add (procs[i]);
+
+        return result;
+    }
+
+    NSArray<NSNumber*>* processesToExclude()
+    {
+        NSMutableArray<NSNumber*>* excluded = [NSMutableArray array];
+
+        const AudioObjectID selfProc = translatePidToProcessObject (getpid());
+        if (selfProc != kAudioObjectUnknown)
+            [excluded addObject: @(selfProc)];
+
+        for (auto proc : getProcessObjectList())
         {
-            CFStringRef bundle = nullptr;
-            UInt32 bundleSize = sizeof (bundle);
-
-            if (AudioObjectGetPropertyData (procs[i], &bundleAddress, 0, nullptr, &bundleSize, &bundle) != noErr
-                || bundle == nullptr)
-                continue;
-
-            const auto bid = cfStringToJuce (bundle).toLowerCase();
-            CFRelease (bundle);
-
+            const auto bid = getProcessBundleId (proc).toLowerCase();
             if (bid.contains ("syncroom"))
             {
-                NSNumber* value = @(procs[i]);
+                NSNumber* value = @(proc);
                 if (! [excluded containsObject: value])
                     [excluded addObject: value];
             }
         }
 
         return excluded;
+    }
+
+    AudioObjectID findProcessObjectForTargetId (const juce::String& targetId)
+    {
+        if (targetId.startsWith (CoreAudioTapCapture::pidIdPrefix))
+        {
+            const auto pidText = targetId.fromFirstOccurrenceOf (CoreAudioTapCapture::pidIdPrefix, false, false);
+            const auto pid = (pid_t) pidText.getLargeIntValue();
+            if (pid > 0)
+                return translatePidToProcessObject (pid);
+            return kAudioObjectUnknown;
+        }
+
+        if (! targetId.startsWith (CoreAudioTapCapture::appIdPrefix))
+            return kAudioObjectUnknown;
+
+        const auto key = targetId.fromFirstOccurrenceOf (CoreAudioTapCapture::appIdPrefix, false, false);
+        if (key.isEmpty())
+            return kAudioObjectUnknown;
+
+        for (auto proc : getProcessObjectList())
+        {
+            const auto bundle = getProcessBundleId (proc);
+            if (bundle.isNotEmpty() && bundle.equalsIgnoreCase (key))
+                return proc;
+
+            const auto pid = getProcessPid (proc);
+            if (pid > 0 && ("pid:" + juce::String ((int) pid)) == key)
+                return proc;
+        }
+
+        return kAudioObjectUnknown;
     }
 }
 
@@ -310,6 +358,54 @@ juce::Array<CoreAudioTapCapture::DeviceInfo> CoreAudioTapCapture::getRenderDevic
     systemMix.isDefault = true;
     list.add (systemMix);
 
+    juce::StringArray seenAppKeys;
+    juce::Array<DeviceInfo> apps;
+
+    for (auto proc : getProcessObjectList())
+    {
+        const auto pid = getProcessPid (proc);
+        if (pid <= 0 || pid == getpid())
+            continue;
+
+        const auto bundle = getProcessBundleId (proc);
+        auto name = getStringProperty (proc, kAudioObjectPropertyName);
+
+        if (name.isEmpty())
+            name = bundle;
+
+        if (name.isEmpty())
+            name = "PID " + juce::String ((int) pid);
+
+        const auto lowerBundle = bundle.toLowerCase();
+        if (lowerBundle.contains ("syncroom") || lowerBundle.contains ("virtualloopback"))
+            continue;
+
+        DeviceInfo info;
+        if (bundle.isNotEmpty())
+            info.id = juce::String (appIdPrefix) + bundle;
+        else
+            info.id = juce::String (pidIdPrefix) + juce::String ((int) pid);
+
+        if (seenAppKeys.contains (info.id))
+            continue;
+
+        seenAppKeys.add (info.id);
+        info.name = juce::String (L"アプリ: ") + name;
+        apps.add (info);
+    }
+
+    struct AppNameComparator
+    {
+        int compareElements (const DeviceInfo& a, const DeviceInfo& b) const
+        {
+            return a.name.compareNatural (b.name);
+        }
+    };
+
+    AppNameComparator comparator;
+    apps.sort (comparator);
+    list.addArray (apps);
+
     AudioObjectPropertyAddress devicesAddress {
         kAudioHardwarePropertyDevices,
         kAudioObjectPropertyScopeGlobal,
@@ -345,6 +441,7 @@ juce::Array<CoreAudioTapCapture::DeviceInfo> CoreAudioTapCapture::getRenderDevic
         if (info.name.isEmpty())
             info.name = info.id;
 
+        info.name = juce::String (L"デバイス: ") + info.name;
         list.add (info);
     }
 
@@ -417,10 +514,22 @@ bool CoreAudioTapCapture::openTap (const juce::String& deviceId)
             CATapDescription* description = nil;
 
             const bool useSystemMix = deviceId.isEmpty() || deviceId == systemMixId;
+            const bool useAppTap = deviceId.startsWith (appIdPrefix) || deviceId.startsWith (pidIdPrefix);
 
             if (useSystemMix)
             {
                 description = [[CATapDescription alloc] initStereoGlobalTapButExcludeProcesses: excluded];
+            }
+            else if (useAppTap)
+            {
+                const AudioObjectID target = findProcessObjectForTargetId (deviceId);
+                if (target == kAudioObjectUnknown)
+                {
+                    setError (juce::String (L"指定アプリのプロセスが見つかりません。一覧を更新してから選び直してください。"));
+                    return false;
+                }
+
+                description = [[CATapDescription alloc] initStereoMixdownOfProcesses: @[ @(target) ]];
             }
             else
             {

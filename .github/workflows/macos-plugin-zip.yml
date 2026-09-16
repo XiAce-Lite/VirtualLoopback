@@ -2,7 +2,7 @@ name: macOS plugin zip
 
 on:
   push:
-    branches: [master, feature/macos-coreaudio]
+    branches: [master, feature/macos-coreaudio, feature/per-app-capture]
     tags: ['v*']
   workflow_dispatch:
 

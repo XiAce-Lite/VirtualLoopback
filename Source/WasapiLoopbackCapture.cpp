@@ -2,22 +2,189 @@
 
 #if JUCE_WINDOWS
 
+#ifndef NTDDI_VERSION
+ #define NTDDI_VERSION 0x0A00000A
+#endif
+#ifndef WINVER
+ #define WINVER 0x0A00
+#endif
+#ifndef _WIN32_WINNT
+ #define _WIN32_WINNT 0x0A00
+#endif
+
 #include <objbase.h>
+#include <objidlbase.h>
 #include <mmdeviceapi.h>
 #include <audioclient.h>
+#include <audiopolicy.h>
 #include <functiondiscoverykeys_devpkey.h>
 #include <avrt.h>
 #include <ksmedia.h>
+#include <tlhelp32.h>
 #include <cstdint>
+
+#if __has_include(<audioclientactivationparams.h>)
+ #include <audioclientactivationparams.h>
+#else
+ enum AUDIOCLIENT_ACTIVATION_TYPE
+ {
+     AUDIOCLIENT_ACTIVATION_TYPE_DEFAULT = 0,
+     AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK = 1
+ };
+
+ enum PROCESS_LOOPBACK_MODE
+ {
+     PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE = 0,
+     PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE = 1
+ };
+
+ struct AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS
+ {
+     DWORD TargetProcessId;
+     PROCESS_LOOPBACK_MODE ProcessLoopbackMode;
+ };
+
+ struct AUDIOCLIENT_ACTIVATION_PARAMS
+ {
+     AUDIOCLIENT_ACTIVATION_TYPE ActivationType;
+     union
+     {
+         AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS ProcessLoopbackParams;
+     };
+ };
+#endif
+
+#ifndef VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK
+ #define VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK L"VAD\\Process_Loopback"
+#endif
 
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "avrt.lib")
+#pragma comment(lib, "mmdevapi.lib")
 
 namespace
 {
     juce::String hresultToString (HRESULT hr)
     {
         return "HRESULT 0x" + juce::String::toHexString ((juce::int64) (juce::uint32) hr);
+    }
+
+    bool supportsApplicationLoopback()
+    {
+        using RtlGetVersionFn = LONG (WINAPI*) (PRTL_OSVERSIONINFOW);
+        HMODULE ntdll = GetModuleHandleW (L"ntdll.dll");
+        if (ntdll == nullptr)
+            return false;
+
+        auto* fn = reinterpret_cast<RtlGetVersionFn> (GetProcAddress (ntdll, "RtlGetVersion"));
+        if (fn == nullptr)
+            return false;
+
+        RTL_OSVERSIONINFOW info {};
+        info.dwOSVersionInfoSize = sizeof (info);
+        if (fn (&info) != 0)
+            return false;
+
+        return info.dwMajorVersion > 10
+            || (info.dwMajorVersion == 10 && info.dwBuildNumber >= 19041);
+    }
+
+    juce::String getProcessImagePath (DWORD pid)
+    {
+        HANDLE process = OpenProcess (PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+        if (process == nullptr)
+            return {};
+
+        wchar_t path[MAX_PATH * 4] = {};
+        DWORD size = (DWORD) (sizeof (path) / sizeof (path[0]));
+        juce::String result;
+
+        if (QueryFullProcessImageNameW (process, 0, path, &size))
+            result = juce::String (path);
+
+        CloseHandle (process);
+        return result;
+    }
+
+    juce::String getProcessExeNameFromSnapshot (DWORD pid)
+    {
+        HANDLE snap = CreateToolhelp32Snapshot (TH32CS_SNAPPROCESS, 0);
+        if (snap == INVALID_HANDLE_VALUE)
+            return {};
+
+        PROCESSENTRY32W entry {};
+        entry.dwSize = sizeof (entry);
+        juce::String result;
+
+        if (Process32FirstW (snap, &entry))
+        {
+            do
+            {
+                if (entry.th32ProcessID == pid)
+                {
+                    result = juce::String (entry.szExeFile);
+                    break;
+                }
+            }
+            while (Process32NextW (snap, &entry));
+        }
+
+        CloseHandle (snap);
+        return result;
+    }
+
+    juce::String makePidCaptureId (DWORD pid)
+    {
+        return juce::String (WasapiLoopbackCapture::pidIdPrefix) + juce::String ((juce::uint32) pid);
+    }
+
+    juce::String makeAppCaptureId (const juce::String& imagePath)
+    {
+        auto key = imagePath.replaceCharacter ('\\', '/').toLowerCase();
+        return juce::String (WasapiLoopbackCapture::appIdPrefix) + key;
+    }
+
+    juce::String displayNameForProcess (DWORD pid, const juce::String& sessionName, const juce::String& imagePath)
+    {
+        if (sessionName.isNotEmpty()
+            && ! sessionName.startsWithIgnoreCase ("@%")
+            && sessionName != ".")
+            return sessionName;
+
+        if (imagePath.isNotEmpty())
+            return juce::File (imagePath).getFileNameWithoutExtension();
+
+        const auto exeName = getProcessExeNameFromSnapshot (pid);
+        if (exeName.isNotEmpty())
+            return juce::File (exeName).getFileNameWithoutExtension();
+
+        return "PID " + juce::String ((juce::uint32) pid);
+    }
+
+    WAVEFORMATEX makeProcessLoopbackFormat()
+    {
+        // Process-loopback virtual device does not support GetMixFormat.
+        // Microsoft sample uses an explicit PCM format + AUTOCONVERTPCM.
+        WAVEFORMATEX format {};
+        format.wFormatTag = WAVE_FORMAT_IEEE_FLOAT;
+        format.nChannels = 2;
+        format.nSamplesPerSec = 48000;
+        format.wBitsPerSample = 32;
+        format.nBlockAlign = (WORD) (format.nChannels * format.wBitsPerSample / 8);
+        format.nAvgBytesPerSec = format.nSamplesPerSec * format.nBlockAlign;
+        format.cbSize = 0;
+        return format;
+    }
+
+    DWORD parsePidFromCaptureId (const juce::String& captureId)
+    {
+        if (captureId.startsWith (WasapiLoopbackCapture::pidIdPrefix))
+        {
+            const auto text = captureId.fromFirstOccurrenceOf (WasapiLoopbackCapture::pidIdPrefix, false, false);
+            return (DWORD) text.getLargeIntValue();
+        }
+
+        return 0;
     }
 }
 
@@ -63,8 +230,164 @@ public:
     T* operator->() const noexcept { return ptr; }
     explicit operator bool() const noexcept { return ptr != nullptr; }
 
+    T* detach() noexcept
+    {
+        T* p = ptr;
+        ptr = nullptr;
+        return p;
+    }
+
 private:
     T* ptr = nullptr;
+};
+
+class ActivateCompletionHandler final : public IActivateAudioInterfaceCompletionHandler,
+                                        public IAgileObject
+{
+public:
+    ActivateCompletionHandler()
+        : eventHandle (CreateEventW (nullptr, FALSE, FALSE, nullptr))
+    {
+    }
+
+    ~ActivateCompletionHandler()
+    {
+        if (audioClient != nullptr)
+        {
+            audioClient->Release();
+            audioClient = nullptr;
+        }
+
+        if (marshaller != nullptr)
+        {
+            marshaller->Release();
+            marshaller = nullptr;
+        }
+
+        if (eventHandle != nullptr)
+            CloseHandle (eventHandle);
+    }
+
+    HRESULT STDMETHODCALLTYPE QueryInterface (REFIID riid, void** ppvObject) override
+    {
+        if (ppvObject == nullptr)
+            return E_POINTER;
+
+        if (riid == __uuidof (IUnknown))
+        {
+            *ppvObject = static_cast<IActivateAudioInterfaceCompletionHandler*> (this);
+            AddRef();
+            return S_OK;
+        }
+
+        if (riid == __uuidof (IActivateAudioInterfaceCompletionHandler))
+        {
+            *ppvObject = static_cast<IActivateAudioInterfaceCompletionHandler*> (this);
+            AddRef();
+            return S_OK;
+        }
+
+        if (riid == __uuidof (IAgileObject))
+        {
+            *ppvObject = static_cast<IAgileObject*> (this);
+            AddRef();
+            return S_OK;
+        }
+
+        if (riid == __uuidof (IMarshal))
+        {
+            if (marshaller == nullptr)
+            {
+                IUnknown* created = nullptr;
+                const HRESULT hr = CoCreateFreeThreadedMarshaler (static_cast<IActivateAudioInterfaceCompletionHandler*> (this),
+                                                                  &created);
+                if (FAILED (hr))
+                    return hr;
+
+                marshaller = created;
+            }
+
+            return marshaller->QueryInterface (riid, ppvObject);
+        }
+
+        *ppvObject = nullptr;
+        return E_NOINTERFACE;
+    }
+
+    ULONG STDMETHODCALLTYPE AddRef() override
+    {
+        return (ULONG) InterlockedIncrement (&refCount);
+    }
+
+    ULONG STDMETHODCALLTYPE Release() override
+    {
+        const LONG value = InterlockedDecrement (&refCount);
+        if (value == 0)
+            delete this;
+        return (ULONG) value;
+    }
+
+    HRESULT STDMETHODCALLTYPE ActivateCompleted (IActivateAudioInterfaceAsyncOperation* activateOperation) override
+    {
+        HRESULT activateResult = E_FAIL;
+        IUnknown* unknown = nullptr;
+
+        if (activateOperation != nullptr)
+        {
+            const HRESULT hr = activateOperation->GetActivateResult (&activateResult, &unknown);
+            if (FAILED (hr))
+                activateResult = hr;
+        }
+
+        resultHr = activateResult;
+
+        if (SUCCEEDED (resultHr) && unknown != nullptr)
+        {
+            IAudioClient* client = nullptr;
+            const HRESULT qiHr = unknown->QueryInterface (__uuidof (IAudioClient), (void**) &client);
+            if (SUCCEEDED (qiHr))
+                audioClient = client;
+            else
+                resultHr = qiHr;
+
+            unknown->Release();
+        }
+
+        if (eventHandle != nullptr)
+            SetEvent (eventHandle);
+
+        return S_OK;
+    }
+
+    bool wait (DWORD timeoutMs)
+    {
+        if (eventHandle == nullptr)
+            return false;
+
+        const DWORD waitResult = WaitForSingleObject (eventHandle, timeoutMs);
+        if (waitResult == WAIT_TIMEOUT)
+            timedOut = true;
+
+        return waitResult == WAIT_OBJECT_0;
+    }
+
+    HRESULT asyncCallHr = S_OK;
+    HRESULT resultHr = E_FAIL;
+    IAudioClient* audioClient = nullptr;
+    bool timedOut = false;
+
+private:
+    volatile LONG refCount = 1;
+    HANDLE eventHandle = nullptr;
+    IUnknown* marshaller = nullptr;
+};
+
+struct ProcessLoopbackActivateResult
+{
+    WasapiComPtr<IAudioClient> client;
+    HRESULT asyncCallHr = E_FAIL;
+    HRESULT activateHr = E_FAIL;
+    bool timedOut = false;
 };
 
 namespace
@@ -87,6 +410,69 @@ namespace
 
         PropVariantClear (&var);
         return result;
+    }
+
+    void appendAudioSessions (IMMDevice* device, juce::Array<WasapiLoopbackCapture::DeviceInfo>& apps, juce::StringArray& seenKeys)
+    {
+        if (device == nullptr)
+            return;
+
+        WasapiComPtr<IAudioSessionManager2> manager;
+        if (FAILED (device->Activate (__uuidof (IAudioSessionManager2), CLSCTX_ALL, nullptr,
+                                      (void**) manager.resetAndGetAddressOf())) || ! manager)
+            return;
+
+        WasapiComPtr<IAudioSessionEnumerator> enumerator;
+        if (FAILED (manager->GetSessionEnumerator (enumerator.resetAndGetAddressOf())) || ! enumerator)
+            return;
+
+        int count = 0;
+        if (FAILED (enumerator->GetCount (&count)))
+            return;
+
+        const DWORD selfPid = GetCurrentProcessId();
+
+        for (int i = 0; i < count; ++i)
+        {
+            WasapiComPtr<IAudioSessionControl> control;
+            if (FAILED (enumerator->GetSession (i, control.resetAndGetAddressOf())) || ! control)
+                continue;
+
+            AudioSessionState sessionState = AudioSessionStateInactive;
+            if (FAILED (control->GetState (&sessionState)) || sessionState != AudioSessionStateActive)
+                continue;
+
+            WasapiComPtr<IAudioSessionControl2> control2;
+            if (FAILED (control->QueryInterface (__uuidof (IAudioSessionControl2),
+                                                  (void**) control2.resetAndGetAddressOf())) || ! control2)
+                continue;
+
+            DWORD pid = 0;
+            if (FAILED (control2->GetProcessId (&pid)) || pid == 0 || pid == selfPid)
+                continue;
+
+            LPWSTR displayNameW = nullptr;
+            juce::String sessionName;
+            if (SUCCEEDED (control->GetDisplayName (&displayNameW)) && displayNameW != nullptr)
+            {
+                sessionName = juce::String (displayNameW);
+                CoTaskMemFree (displayNameW);
+            }
+
+            const auto imagePath = getProcessImagePath (pid);
+            // Prefer a stable PID id: OpenProcess can fail for protected apps, and
+            // process-loopback needs the exact session PID anyway.
+            const auto id = makePidCaptureId (pid);
+            if (seenKeys.contains (id))
+                continue;
+
+            seenKeys.add (id);
+
+            WasapiLoopbackCapture::DeviceInfo info;
+            info.id = id;
+            info.name = juce::String (L"アプリ: ") + displayNameForProcess (pid, sessionName, imagePath);
+            apps.add (info);
+        }
     }
 }
 
@@ -141,9 +527,21 @@ juce::String WasapiLoopbackCapture::getLastError() const
     return lastError;
 }
 
+void WasapiLoopbackCapture::setError (const juce::String& text)
+{
+    const juce::ScopedLock sl (errorLock);
+    lastError = text;
+}
+
 juce::Array<WasapiLoopbackCapture::DeviceInfo> WasapiLoopbackCapture::getRenderDevices()
 {
     juce::Array<DeviceInfo> list;
+
+    DeviceInfo systemMix;
+    systemMix.id = systemMixId;
+    systemMix.name = juce::String (L"システム再生音");
+    systemMix.isDefault = true;
+    list.add (systemMix);
 
     const HRESULT coHr = CoInitializeEx (nullptr, COINIT_MULTITHREADED);
     const bool shouldUninit = (coHr == S_OK);
@@ -159,18 +557,49 @@ juce::Array<WasapiLoopbackCapture::DeviceInfo> WasapiLoopbackCapture::getRenderD
     }
 
     juce::String defaultId;
+    WasapiComPtr<IMMDevice> defaultDevice;
+    if (SUCCEEDED (enumerator->GetDefaultAudioEndpoint (eRender, eConsole,
+                                                        defaultDevice.resetAndGetAddressOf())))
     {
-        WasapiComPtr<IMMDevice> defDev;
-        if (SUCCEEDED (enumerator->GetDefaultAudioEndpoint (eRender, eConsole,
-                                                            defDev.resetAndGetAddressOf())))
+        LPWSTR id = nullptr;
+        if (SUCCEEDED (defaultDevice->GetId (&id)) && id != nullptr)
         {
-            LPWSTR id = nullptr;
-            if (SUCCEEDED (defDev->GetId (&id)) && id != nullptr)
+            defaultId = juce::String (id);
+            CoTaskMemFree (id);
+        }
+    }
+
+    juce::Array<DeviceInfo> apps;
+    juce::StringArray seenAppKeys;
+
+    if (supportsApplicationLoopback())
+    {
+        WasapiComPtr<IMMDeviceCollection> collectionForSessions;
+        if (SUCCEEDED (enumerator->EnumAudioEndpoints (eRender, DEVICE_STATE_ACTIVE,
+                                                       collectionForSessions.resetAndGetAddressOf())))
+        {
+            UINT sessionDeviceCount = 0;
+            collectionForSessions->GetCount (&sessionDeviceCount);
+
+            for (UINT i = 0; i < sessionDeviceCount; ++i)
             {
-                defaultId = juce::String (id);
-                CoTaskMemFree (id);
+                WasapiComPtr<IMMDevice> device;
+                if (SUCCEEDED (collectionForSessions->Item (i, device.resetAndGetAddressOf())) && device)
+                    appendAudioSessions (device.get(), apps, seenAppKeys);
             }
         }
+
+        struct AppNameComparator
+        {
+            int compareElements (const DeviceInfo& a, const DeviceInfo& b) const
+            {
+                return a.name.compareNatural (b.name);
+            }
+        };
+
+        AppNameComparator comparator;
+        apps.sort (comparator);
+        list.addArray (apps);
     }
 
     WasapiComPtr<IMMDeviceCollection> collection;
@@ -203,7 +632,9 @@ juce::Array<WasapiLoopbackCapture::DeviceInfo> WasapiLoopbackCapture::getRenderD
         if (info.name.isEmpty())
             info.name = info.id;
 
-        info.isDefault = (info.id == defaultId);
+        const bool isDefaultEndpoint = (info.id == defaultId);
+        info.name = juce::String (L"デバイス: ") + info.name
+                  + (isDefaultEndpoint ? juce::String (L" （既定エンドポイント）") : juce::String());
         list.add (info);
     }
 
@@ -222,7 +653,7 @@ bool WasapiLoopbackCapture::start (const juce::String& deviceId)
         lastError.clear();
     }
 
-    pendingDeviceId = deviceId;
+    pendingDeviceId = deviceId.isEmpty() ? juce::String (systemMixId) : deviceId;
     shouldStop = false;
     running = true;
     captureThread = std::thread ([this] { captureThreadFn(); });
@@ -278,13 +709,294 @@ bool WasapiLoopbackCapture::openDevice (const juce::String& deviceId)
 {
     native->close();
 
+    const juce::String effectiveId = deviceId.isEmpty() ? juce::String (systemMixId) : deviceId;
+
+    if (effectiveId.startsWith (pidIdPrefix) || effectiveId.startsWith (appIdPrefix))
+    {
+        if (! supportsApplicationLoopback())
+        {
+            setError (juce::String (L"アプリ単位キャプチャには Windows 10 version 2004（ビルド 19041）以降が必要です。"));
+            return false;
+        }
+
+        DWORD matchedPid = parsePidFromCaptureId (effectiveId);
+
+        if (matchedPid == 0 && effectiveId.startsWith (appIdPrefix))
+        {
+            const auto appKey = effectiveId.fromFirstOccurrenceOf (appIdPrefix, false, false);
+
+            WasapiComPtr<IMMDeviceEnumerator> enumerator;
+            HRESULT hr = CoCreateInstance (__uuidof (MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+                                           __uuidof (IMMDeviceEnumerator),
+                                           (void**) enumerator.resetAndGetAddressOf());
+            if (FAILED (hr))
+            {
+                setError ("MMDeviceEnumerator failed: " + hresultToString (hr));
+                return false;
+            }
+
+            WasapiComPtr<IMMDeviceCollection> collection;
+            if (SUCCEEDED (enumerator->EnumAudioEndpoints (eRender, DEVICE_STATE_ACTIVE,
+                                                           collection.resetAndGetAddressOf())))
+            {
+                UINT count = 0;
+                collection->GetCount (&count);
+
+                for (UINT i = 0; i < count && matchedPid == 0; ++i)
+                {
+                    WasapiComPtr<IMMDevice> device;
+                    if (FAILED (collection->Item (i, device.resetAndGetAddressOf())) || ! device)
+                        continue;
+
+                    WasapiComPtr<IAudioSessionManager2> manager;
+                    if (FAILED (device->Activate (__uuidof (IAudioSessionManager2), CLSCTX_ALL, nullptr,
+                                                  (void**) manager.resetAndGetAddressOf())) || ! manager)
+                        continue;
+
+                    WasapiComPtr<IAudioSessionEnumerator> sessions;
+                    if (FAILED (manager->GetSessionEnumerator (sessions.resetAndGetAddressOf())) || ! sessions)
+                        continue;
+
+                    int sessionCount = 0;
+                    if (FAILED (sessions->GetCount (&sessionCount)))
+                        continue;
+
+                    for (int s = 0; s < sessionCount; ++s)
+                    {
+                        WasapiComPtr<IAudioSessionControl> control;
+                        if (FAILED (sessions->GetSession (s, control.resetAndGetAddressOf())) || ! control)
+                            continue;
+
+                        WasapiComPtr<IAudioSessionControl2> control2;
+                        if (FAILED (control->QueryInterface (__uuidof (IAudioSessionControl2),
+                                                              (void**) control2.resetAndGetAddressOf())) || ! control2)
+                            continue;
+
+                        DWORD pid = 0;
+                        if (FAILED (control2->GetProcessId (&pid)) || pid == 0)
+                            continue;
+
+                        const auto path = getProcessImagePath (pid);
+                        if (path.isEmpty())
+                            continue;
+
+                        if (makeAppCaptureId (path).fromFirstOccurrenceOf (appIdPrefix, false, false)
+                            .equalsIgnoreCase (appKey))
+                        {
+                            matchedPid = pid;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (matchedPid == 0)
+        {
+            setError (juce::String (L"指定アプリのプロセスが見つかりません。音を再生中のアプリで「更新」してから選び直してください。"));
+            return false;
+        }
+
+        if (! openProcessLoopback (matchedPid))
+            return false;
+
+        activeDeviceId = effectiveId;
+        return true;
+    }
+
+    const juce::String endpointId = (effectiveId == systemMixId) ? juce::String() : effectiveId;
+    if (! openEndpointLoopback (endpointId))
+        return false;
+
+    activeDeviceId = effectiveId;
+    return true;
+}
+
+bool WasapiLoopbackCapture::openProcessLoopback (juce::uint32 processId)
+{
+    auto activateProcessClient = [processId]() -> ProcessLoopbackActivateResult
+    {
+        ProcessLoopbackActivateResult result;
+
+        auto* handler = new ActivateCompletionHandler();
+
+        AUDIOCLIENT_ACTIVATION_PARAMS activationParams {};
+        activationParams.ActivationType = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK;
+        activationParams.ProcessLoopbackParams.TargetProcessId = processId;
+        activationParams.ProcessLoopbackParams.ProcessLoopbackMode = PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE;
+
+        PROPVARIANT activateParams {};
+        PropVariantInit (&activateParams);
+        activateParams.vt = VT_BLOB;
+        activateParams.blob.cbSize = (ULONG) sizeof (activationParams);
+        activateParams.blob.pBlobData = reinterpret_cast<BYTE*> (&activationParams);
+
+        WasapiComPtr<IActivateAudioInterfaceAsyncOperation> asyncOp;
+        const HRESULT hr = ActivateAudioInterfaceAsync (VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK,
+                                                        __uuidof (IAudioClient),
+                                                        &activateParams,
+                                                        handler,
+                                                        asyncOp.resetAndGetAddressOf());
+        result.asyncCallHr = hr;
+        if (FAILED (hr))
+        {
+            handler->Release();
+            return result;
+        }
+
+        if (! handler->wait (8000))
+        {
+            result.timedOut = handler->timedOut;
+            handler->Release();
+            return result;
+        }
+
+        result.activateHr = handler->resultHr;
+        if (FAILED (handler->resultHr) || handler->audioClient == nullptr)
+        {
+            handler->Release();
+            return result;
+        }
+
+        *result.client.resetAndGetAddressOf() = handler->audioClient;
+        handler->audioClient = nullptr;
+        handler->Release();
+        return result;
+    };
+
+    auto activation = activateProcessClient();
+    native->audioClient = std::move (activation.client);
+    if (! native->audioClient)
+    {
+        if (activation.timedOut)
+        {
+            setError (juce::String (L"アプリ単位ループバックの有効化がタイムアウトしました。PID ")
+                      + juce::String ((juce::uint32) processId)
+                      + juce::String (L" で再生中か確認してください。"));
+        }
+        else if (FAILED (activation.asyncCallHr))
+        {
+            setError (juce::String (L"ActivateAudioInterfaceAsync 失敗 (PID ")
+                      + juce::String ((juce::uint32) processId) + "): "
+                      + hresultToString (activation.asyncCallHr));
+        }
+        else if (FAILED (activation.activateHr))
+        {
+            setError (juce::String (L"プロセスループバック有効化失敗 (PID ")
+                      + juce::String ((juce::uint32) processId) + "): "
+                      + hresultToString (activation.activateHr));
+        }
+        else
+        {
+            setError (juce::String (L"IAudioClient の取得に失敗しました (PID ")
+                      + juce::String ((juce::uint32) processId) + ")");
+        }
+
+        return false;
+    }
+
+    // Do NOT call GetMixFormat — unsupported on the process-loopback virtual device.
+    WAVEFORMATEX captureFormat = makeProcessLoopbackFormat();
+    native->mixFormat = (WAVEFORMATEX*) CoTaskMemAlloc (sizeof (WAVEFORMATEX));
+    if (native->mixFormat == nullptr)
+    {
+        setError ("CoTaskMemAlloc failed for process loopback format");
+        return false;
+    }
+    *native->mixFormat = captureFormat;
+
+    native->eventHandle = CreateEventW (nullptr, FALSE, FALSE, nullptr);
+    if (native->eventHandle == nullptr)
+    {
+        setError ("CreateEvent failed for process loopback");
+        return false;
+    }
+
+    // Match Microsoft Application Loopback sample: explicit format, hnsBufferDuration=0.
+    HRESULT hr = native->audioClient->Initialize (AUDCLNT_SHAREMODE_SHARED,
+                                                  AUDCLNT_STREAMFLAGS_LOOPBACK
+                                                      | AUDCLNT_STREAMFLAGS_EVENTCALLBACK
+                                                      | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM,
+                                                  0,
+                                                  0,
+                                                  native->mixFormat,
+                                                  nullptr);
+
+    if (FAILED (hr))
+    {
+        // Fallback: PCM 16-bit @ 44100 as in the official sample.
+        WAVEFORMATEX pcm16 {};
+        pcm16.wFormatTag = WAVE_FORMAT_PCM;
+        pcm16.nChannels = 2;
+        pcm16.nSamplesPerSec = 44100;
+        pcm16.wBitsPerSample = 16;
+        pcm16.nBlockAlign = (WORD) (pcm16.nChannels * pcm16.wBitsPerSample / 8);
+        pcm16.nAvgBytesPerSec = pcm16.nSamplesPerSec * pcm16.nBlockAlign;
+        pcm16.cbSize = 0;
+        *native->mixFormat = pcm16;
+
+        // Must re-activate; a failed Initialize leaves the client unusable.
+        native->audioClient.reset();
+        auto retryActivation = activateProcessClient();
+        native->audioClient = std::move (retryActivation.client);
+        if (! native->audioClient)
+        {
+            setError ("Process loopback re-activate failed after Initialize: " + hresultToString (hr));
+            return false;
+        }
+
+        hr = native->audioClient->Initialize (AUDCLNT_SHAREMODE_SHARED,
+                                              AUDCLNT_STREAMFLAGS_LOOPBACK
+                                                  | AUDCLNT_STREAMFLAGS_EVENTCALLBACK
+                                                  | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM,
+                                              0,
+                                              0,
+                                              native->mixFormat,
+                                              nullptr);
+        if (FAILED (hr))
+        {
+            setError ("Process loopback Initialize failed: " + hresultToString (hr));
+            return false;
+        }
+    }
+
+    hr = native->audioClient->SetEventHandle (native->eventHandle);
+    if (FAILED (hr))
+    {
+        setError ("SetEventHandle (process) failed: " + hresultToString (hr));
+        return false;
+    }
+
+    hr = native->audioClient->GetService (__uuidof (IAudioCaptureClient),
+                                          (void**) native->captureClient.resetAndGetAddressOf());
+    if (FAILED (hr))
+    {
+        setError ("GetService IAudioCaptureClient (process) failed: " + hresultToString (hr));
+        return false;
+    }
+
+    const int numCh = (int) native->mixFormat->nChannels;
+    captureNumChannels = numCh;
+    captureSampleRate = (double) native->mixFormat->nSamplesPerSec;
+
+    ring.setSize (juce::jmax (2, numCh), fifoFrames, false, false, true);
+    ring.clear();
+    {
+        const juce::ScopedLock sl (fifoLock);
+        fifo.reset();
+    }
+
+    return true;
+}
+
+bool WasapiLoopbackCapture::openEndpointLoopback (const juce::String& deviceId)
+{
     HRESULT hr = CoCreateInstance (__uuidof (MMDeviceEnumerator), nullptr, CLSCTX_ALL,
                                    __uuidof (IMMDeviceEnumerator),
                                    (void**) native->enumerator.resetAndGetAddressOf());
     if (FAILED (hr))
     {
-        const juce::ScopedLock sl (errorLock);
-        lastError = "MMDeviceEnumerator failed: " + hresultToString (hr);
+        setError ("MMDeviceEnumerator failed: " + hresultToString (hr));
         return false;
     }
 
@@ -301,8 +1013,7 @@ bool WasapiLoopbackCapture::openDevice (const juce::String& deviceId)
 
     if (FAILED (hr) || ! native->device)
     {
-        const juce::ScopedLock sl (errorLock);
-        lastError = "GetDevice failed: " + hresultToString (hr);
+        setError ("GetDevice failed: " + hresultToString (hr));
         return false;
     }
 
@@ -310,16 +1021,14 @@ bool WasapiLoopbackCapture::openDevice (const juce::String& deviceId)
                                    (void**) native->audioClient.resetAndGetAddressOf());
     if (FAILED (hr))
     {
-        const juce::ScopedLock sl (errorLock);
-        lastError = "Activate IAudioClient failed: " + hresultToString (hr);
+        setError ("Activate IAudioClient failed: " + hresultToString (hr));
         return false;
     }
 
     hr = native->audioClient->GetMixFormat (&native->mixFormat);
     if (FAILED (hr) || native->mixFormat == nullptr)
     {
-        const juce::ScopedLock sl (errorLock);
-        lastError = "GetMixFormat failed: " + hresultToString (hr);
+        setError ("GetMixFormat failed: " + hresultToString (hr));
         return false;
     }
 
@@ -363,8 +1072,7 @@ bool WasapiLoopbackCapture::openDevice (const juce::String& deviceId)
                                        (void**) native->audioClient.resetAndGetAddressOf());
         if (FAILED (hr))
         {
-            const juce::ScopedLock sl (errorLock);
-            lastError = "Re-Activate IAudioClient failed: " + hresultToString (hr);
+            setError ("Re-Activate IAudioClient failed: " + hresultToString (hr));
             return false;
         }
 
@@ -377,8 +1085,7 @@ bool WasapiLoopbackCapture::openDevice (const juce::String& deviceId)
         hr = native->audioClient->GetMixFormat (&native->mixFormat);
         if (FAILED (hr) || native->mixFormat == nullptr)
         {
-            const juce::ScopedLock sl (errorLock);
-            lastError = "GetMixFormat (retry) failed: " + hresultToString (hr);
+            setError ("GetMixFormat (retry) failed: " + hresultToString (hr));
             return false;
         }
 
@@ -390,8 +1097,7 @@ bool WasapiLoopbackCapture::openDevice (const juce::String& deviceId)
                                               nullptr);
         if (FAILED (hr))
         {
-            const juce::ScopedLock sl (errorLock);
-            lastError = "IAudioClient::Initialize (loopback) failed: " + hresultToString (hr);
+            setError ("IAudioClient::Initialize (loopback) failed: " + hresultToString (hr));
             return false;
         }
     }
@@ -400,8 +1106,7 @@ bool WasapiLoopbackCapture::openDevice (const juce::String& deviceId)
                                           (void**) native->captureClient.resetAndGetAddressOf());
     if (FAILED (hr))
     {
-        const juce::ScopedLock sl (errorLock);
-        lastError = "GetService IAudioCaptureClient failed: " + hresultToString (hr);
+        setError ("GetService IAudioCaptureClient failed: " + hresultToString (hr));
         return false;
     }
 
@@ -416,7 +1121,6 @@ bool WasapiLoopbackCapture::openDevice (const juce::String& deviceId)
         fifo.reset();
     }
 
-    activeDeviceId = deviceId;
     return true;
 }
 

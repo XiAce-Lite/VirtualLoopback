@@ -20,12 +20,12 @@ VirtualLoopbackAudioProcessorEditor::VirtualLoopbackAudioProcessorEditor (Virtua
     addAndMakeVisible (titleLabel);
 
 #if JUCE_MAC
-    hintLabel.setText (juce::String (L"「システム再生音」は Chrome など DAW 以外の再生を取り込みます。\n"
+    hintLabel.setText (juce::String (L"既定は「システム再生音」。一覧の「アプリ: …」で Chrome など個別にも取れます。\n"
                                      L"初回は「画面収録とシステムオーディオ」で、使っている DAW を許可してください。"),
                        juce::dontSendNotification);
 #else
-    hintLabel.setText (juce::String (L"Chrome などのアプリが使用している再生デバイスを選択してください。\n"
-                                     L"SyncRoom / DAW のモニター戻りが出ているデバイスは選ばないでください。"),
+    hintLabel.setText (juce::String (L"既定は「システム再生音」。再生中のアプリは「アプリ: …」で個別に選べます。\n"
+                                     L"デバイス指定時は、SYNCROOM / DAW のモニター戻りが出ているデバイスは選ばないでください。"),
                        juce::dontSendNotification);
 #endif
     hintLabel.setFont (juce::Font (juce::FontOptions (13.0f)));
