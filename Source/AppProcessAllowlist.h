@@ -10,6 +10,12 @@
 class AppProcessAllowlist
 {
 public:
+    struct RunningAppInfo
+    {
+        juce::String processName;  // allowlist / capture key (no .exe)
+        juce::String displayName;  // Task Manager-like label for UI
+    };
+
     static AppProcessAllowlist& get();
 
     void reload();
@@ -24,11 +30,12 @@ public:
     juce::String getProcessNamesAsText() const;
     void setProcessNamesFromText (const juce::String& text);
 
-    /** Running user-facing app process names without .exe (Windows).
-        Prefers processes that own a visible top-level window; skips Windows system images.
-        Empty on other platforms.
+    /** Task Manager "Apps"-ish candidates (Windows). Empty on other platforms.
+        @param includeBroaderApps  false = visible-window apps only.
+                                   true  = also Program Files / user-profile installs
+                                   (still skips services, helpers, IME, etc.).
     */
-    static juce::StringArray getRunningProcessNames();
+    static juce::Array<RunningAppInfo> getRunningApps (bool includeBroaderApps = false);
 
     juce::File getSettingsDirectory() const;
     juce::File getSettingsFile() const;

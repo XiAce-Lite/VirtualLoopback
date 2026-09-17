@@ -18,8 +18,12 @@
             file="Source/AppProcessAllowlist.h"/>
       <FILE id="VLAllowC" name="AppProcessAllowlist.cpp" compile="1" resource="0"
             file="Source/AppProcessAllowlist.cpp"/>
-      <FILE id="VLAllowDlg" name="ProcessAllowlistDialog.h" compile="0" resource="0"
+      <FILE id="VLAllowDlgH" name="ProcessAllowlistDialog.h" compile="0" resource="0"
             file="Source/ProcessAllowlistDialog.h"/>
+      <FILE id="VLAllowDlgC" name="ProcessAllowlistDialog.cpp" compile="1" resource="0"
+            file="Source/ProcessAllowlistDialog.cpp"/>
+      <FILE id="VLUiColours" name="UiColours.h" compile="0" resource="0"
+            file="Source/UiColours.h"/>
       <FILE id="VLMacH" name="CoreAudioTapCapture.h" compile="0" resource="0"
             file="Source/CoreAudioTapCapture.h"/>
       <FILE id="VLMacC" name="CoreAudioTapCapture.mm" compile="1" resource="0"

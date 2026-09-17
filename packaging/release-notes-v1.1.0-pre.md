@@ -4,7 +4,10 @@
 
 ### 今回の追加（Windows）
 - **追加プロセス…**: オーディオセッションが無いアプリも、プロセス名の allowlist でキャプチャ候補に出せます
-- 候補はウィンドウのあるアプリ寄りに絞り込み（SYNCROOM / SYNCROOM2 は非表示）
+- 候補は **タスクマネージャの「アプリ」に近い表示名**（FileDescription / ウィンドウタイトル）。保存キーはプロセス名（拡張子なし）
+- 既定候補は **可視ウィンドウのあるアプリ** のみ（サービスや `svchost` などは出さない）
+- **インストール済みアプリも候補に含める** トグルで、Program Files / ユーザープロファイル配下も追加（ヘルパー・IME・Crashpad・updater 等は除外）
+- **SYNCROOM / SYNCROOM2** 本体は候補に出さない（**SyncRoomChatTool*** は登録可）
 - 名前が取れないセッションは一覧に出さない
 - 保存先: `%AppData%\VirtualLoopback\app_process_allowlist.txt`
 
@@ -27,6 +30,13 @@
 | `VirtualLoopback-windows-x64.zip` | zip で保管したい人。展開して中の `VirtualLoopback.vst3` を同じ場所へ |
 
 > 迷ったら **`VirtualLoopback.vst3` を直接ダウンロード** で OK です。
+
+### 追加プロセスの使い方（Windows）
+1. 対象アプリを起動する（音を出していなくても可）
+2. プラグインの **追加プロセス…** を開く
+3. **追加プロセス一覧を使う** をオンにする
+4. 「アプリから追加」で選び **追加**（見つからなければトグルをオン、または手入力）
+5. **保存** → デバイス一覧を更新し、`アプリ: …` から選ぶ
 
 #### Mac
 - **`VirtualLoopback-macos-universal.zip`** を展開し、`VirtualLoopback.vst3` を `~/Library/Audio/Plug-Ins/VST3/` へ（AU は `.component` を Components へ）

@@ -1,8 +1,47 @@
 #include "PluginEditor.h"
+#include "UiColours.h"
 
 #if JUCE_WINDOWS
  #include "ProcessAllowlistDialog.h"
 #endif
+
+namespace
+{
+    class VolumeSliderLookAndFeel final : public juce::LookAndFeel_V4
+    {
+    public:
+        void drawLinearSlider (juce::Graphics& g, int x, int y, int width, int height,
+                               float sliderPos, float /*minSliderPos*/, float /*maxSliderPos*/,
+                               const juce::Slider::SliderStyle style, juce::Slider& slider) override
+        {
+            if (style != juce::Slider::LinearHorizontal && style != juce::Slider::LinearBar)
+            {
+                LookAndFeel_V4::drawLinearSlider (g, x, y, width, height, sliderPos,
+                                                 0.0f, 0.0f, style, slider);
+                return;
+            }
+
+            auto trackBounds = juce::Rectangle<float> ((float) x,
+                                                       (float) y + (float) height * 0.35f,
+                                                       (float) width,
+                                                       (float) height * 0.30f);
+
+            g.setColour (VlUi::panel());
+            g.fillRoundedRectangle (trackBounds, 3.0f);
+
+            // Fill from the left edge up to the thumb — natural volume semantics.
+            const float fillRight = juce::jlimit (trackBounds.getX(),
+                                                  trackBounds.getRight(),
+                                                  sliderPos);
+            auto filled = trackBounds.withRight (fillRight);
+            g.setColour (VlUi::accent());
+            g.fillRoundedRectangle (filled, 3.0f);
+
+            g.setColour (juce::Colours::white.withAlpha (0.9f));
+            g.fillEllipse (sliderPos - 6.0f, (float) y + (float) height * 0.5f - 6.0f, 12.0f, 12.0f);
+        }
+    };
+}
 
 VirtualLoopbackAudioProcessorEditor::VirtualLoopbackAudioProcessorEditor (VirtualLoopbackAudioProcessor& p)
     : AudioProcessorEditor (&p), processor (p)
@@ -10,6 +49,8 @@ VirtualLoopbackAudioProcessorEditor::VirtualLoopbackAudioProcessorEditor (Virtua
     setSize (560, 360);
     setResizeLimits (520, 320, 900, 640);
     setResizable (true, false);
+
+    volumeLookAndFeel = std::make_unique<VolumeSliderLookAndFeel>();
 
     // JUCE の String(const char*) は ASCII 専用。日本語は wchar_t / UTF-8 明示が必須。
     refreshButton.setButtonText (juce::String (L"更新"));
@@ -87,6 +128,8 @@ VirtualLoopbackAudioProcessorEditor::VirtualLoopbackAudioProcessorEditor (Virtua
     volumeLabel.setColour (juce::Label::textColourId, juce::Colours::white);
     addAndMakeVisible (volumeLabel);
 
+    volumeSlider.setLookAndFeel (volumeLookAndFeel.get());
+    volumeSlider.setSliderStyle (juce::Slider::LinearHorizontal);
     volumeSlider.setRange (0.0, 1.0, 0.01);
     volumeSlider.setValue (processor.volumeParam->get(), juce::dontSendNotification);
     volumeSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 56, 20);
@@ -112,23 +155,24 @@ VirtualLoopbackAudioProcessorEditor::VirtualLoopbackAudioProcessorEditor (Virtua
 
 VirtualLoopbackAudioProcessorEditor::~VirtualLoopbackAudioProcessorEditor()
 {
+    volumeSlider.setLookAndFeel (nullptr);
     stopTimer();
 }
 
 void VirtualLoopbackAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (juce::Colour (0xff1e1f24));
+    g.fillAll (VlUi::background());
 
     if (! meterBounds.isEmpty())
     {
-        g.setColour (juce::Colour (0xff2c2f38));
+        g.setColour (VlUi::panel());
         g.fillRoundedRectangle (meterBounds.toFloat(), 3.0f);
 
         auto filled = meterBounds;
         filled.setWidth (juce::jlimit (0, meterBounds.getWidth(),
                                        (int) std::round (meterLevel * (float) meterBounds.getWidth())));
         g.setColour (meterLevel > 0.95f ? juce::Colours::red.brighter (0.2f)
-                                       : juce::Colour (0xff5ad67c));
+                                       : VlUi::accent());
         g.fillRoundedRectangle (filled.toFloat(), 3.0f);
 
         g.setColour (juce::Colours::white.withAlpha (0.15f));
@@ -193,7 +237,7 @@ void VirtualLoopbackAudioProcessorEditor::openAllowlistDialog()
     juce::DialogWindow::LaunchOptions opts;
     opts.content.setOwned (content);
     opts.dialogTitle = "VirtualLoopback";
-    opts.dialogBackgroundColour = juce::Colour (0xff1e1f24);
+    opts.dialogBackgroundColour = VlUi::background();
     opts.escapeKeyTriggersCloseButton = true;
     opts.useNativeTitleBar = true;
     opts.resizable = false;
@@ -224,8 +268,8 @@ void VirtualLoopbackAudioProcessorEditor::updateStatus()
 {
     statusLabel.setText (processor.getCaptureStatusText(), juce::dontSendNotification);
     statusLabel.setColour (juce::Label::textColourId,
-                           processor.isCaptureRunning() ? juce::Colour (0xff5ad67c)
-                                                        : juce::Colour (0xffffb454));
+                           processor.isCaptureRunning() ? VlUi::accent()
+                                                        : VlUi::statusIdle());
 }
 
 void VirtualLoopbackAudioProcessorEditor::timerCallback()

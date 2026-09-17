@@ -131,6 +131,7 @@ The list is roughly:
 - **システム再生音:** default render device loopback (classic WASAPI loopback)
 - **アプリ: …:** Windows Application Loopback for that process tree (Win10 2004 / build 19041+)
 - If an app is missing, play audio in it and press **更新** (Refresh)
+- **追加プロセス… (pre-release):** register process names so session-less apps still appear as capture candidates (Task Manager–like labels; SYNCROOM itself is hidden, SyncRoomChatTool* allowed)
 
 ### What not to choose (device mode)
 

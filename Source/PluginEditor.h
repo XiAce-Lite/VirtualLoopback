@@ -21,6 +21,7 @@ private:
     void openAllowlistDialog();
 
     VirtualLoopbackAudioProcessor& processor;
+    std::unique_ptr<juce::LookAndFeel> volumeLookAndFeel;
 
     juce::ComboBox deviceBox;
     juce::TextButton refreshButton;

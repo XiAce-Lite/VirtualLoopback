@@ -69,6 +69,7 @@ set(VL_SOURCES
     Source/PluginEditor.cpp
     Source/WasapiLoopbackCapture.cpp
     Source/AppProcessAllowlist.cpp
+    Source/ProcessAllowlistDialog.cpp
 )
 
 if(APPLE)
