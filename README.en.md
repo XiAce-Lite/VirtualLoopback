@@ -123,15 +123,17 @@ This is the most confusing part.
 The list is roughly:
 
 1. **システム再生音** (default) — full system playback mix
-2. **アプリ: …** — a single app (insert multiple plugin instances for different apps)
+2. **アプリ: …** — a single app (put each app on its own track)
 3. **デバイス: …** — a specific render endpoint (legacy mode)
+
+> **Do not stack multiple instances on the same track.** With per-app capture, inserting this plugin more than once on one track means **only the last instance** is active. Each instance discards everything that arrived before it and outputs only its own capture. That is intentional, not a bug. To loop back several apps at once, **use a separate track for each**.
 
 ### Windows
 
 - **システム再生音:** default render device loopback (classic WASAPI loopback)
 - **アプリ: …:** Windows Application Loopback for that process tree (Win10 2004 / build 19041+)
 - If an app is missing, play audio in it and press **更新** (Refresh)
-- **追加プロセス… (pre-release):** register process names so session-less apps still appear as capture candidates (Task Manager–like labels; SYNCROOM itself is hidden, SyncRoomChatTool* allowed)
+- **追加プロセス… (pre-release):** apps with no audio session can still be listed if you register their process name (labels lean toward the app name; SYNCROOM itself is excluded, ChatTool is allowed)
 
 ### What not to choose (device mode)
 
@@ -184,6 +186,6 @@ If using MSBuild, prefer the **amd64** toolchain.
 - Mac requires **macOS 14.2 or later** (there is no public playback-mix API before that)
 - Per-app capture on Windows requires **Windows 10 version 2004 (build 19041) or later / Windows 11**
 - Mac does not use BlackHole, Loopback, or a virtual HAL driver
-- Mac does **not** use BlackHole, Loopback, or a virtual HAL driver
 - Playing prepared static files (WAV, etc.) is out of scope for this plugin
 - On first capture start, there may be a very short silence while the internal buffer fills
+- With per-app capture, **multiple instances of this plugin on the same track** means **only the last instance** is active. Each instance discards the audio ahead of it and outputs only its own capture (by design). To capture several apps at once, **put each one on its own track**
