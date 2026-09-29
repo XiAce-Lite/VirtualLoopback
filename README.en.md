@@ -6,7 +6,7 @@ A plugin that routes **PC playback audio** (browser, media players, etc.) into a
 - **Mac:** **Core Audio Process Tap** (BlackHole / Rogue Amoeba Loopback not required; macOS 14.2+)
 
 > **Supported OS:** Windows 10 version 2004 (build 19041) or later / Windows 11, and macOS 14.2 or later  
-> Latest binaries are on GitHub Release **v1.0.1** (Windows VST3 / Mac VST3+AU). Per-app capture is under development on `feature/per-app-capture`.
+> Latest binaries are on GitHub Release **v1.1.0** (Windows VST3 / Mac VST3+AU).
 
 [日本語版 README](README.md)
 
@@ -133,7 +133,7 @@ The list is roughly:
 - **システム再生音:** default render device loopback (classic WASAPI loopback)
 - **アプリ: …:** Windows Application Loopback for that process tree (Win10 2004 / build 19041+)
 - If an app is missing, play audio in it and press **更新** (Refresh)
-- **追加プロセス… (pre-release):** apps with no audio session can still be listed if you register their process name (labels lean toward the app name; SYNCROOM itself is excluded, ChatTool is allowed)
+- **追加プロセス…:** apps with no audio session can still be listed if you register their process name (labels lean toward the app name; SYNCROOM itself is excluded, ChatTool is allowed)
 
 ### What not to choose (device mode)
 

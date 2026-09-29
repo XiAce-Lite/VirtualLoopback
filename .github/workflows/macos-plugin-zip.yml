@@ -100,7 +100,7 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           case "$TAG" in
             v*) ;;
-            *) TAG="v1.0.1" ;;
+            *) TAG="v1.1.0" ;;
           esac
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG not found yet; skipping upload"

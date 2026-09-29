@@ -6,7 +6,7 @@ Windows の PC 再生音（ブラウザ・メディアプレイヤーなど）�
 - **Mac:** **Core Audio Process Tap**（BlackHole / Rogue Amoeba Loopback 不要、macOS 14.2 以降）
 
 > **対応 OS:** Windows 10 version 2004（ビルド 19041）以降 / Windows 11、および macOS 14.2 以降  
-> 最新配布は GitHub Release **v1.0.1**（Windows VST3 / Mac VST3+AU）です。アプリ単位キャプチャは `feature/per-app-capture` ブランチで開発中です。
+> 最新配布は GitHub Release **v1.1.0**（Windows VST3 / Mac VST3+AU）です。
 
 [English README](README.en.md)
 
@@ -135,7 +135,7 @@ DAW と SYNCROOM で同じ ASIO を同時に掴むと衝突しやすいので、
 - **システム再生音:** 既定の再生デバイスに流れている音をまとめて取り込みます（従来の WASAPI ループバック）
 - **アプリ: …:** Windows の Application Loopback で、そのプロセス木だけを取り込みます（Win10 2004 / ビルド 19041 以降）
 - アプリが出ないときは、対象を再生した状態で **更新** を押してください
-- **追加プロセス…（プレリリース）:** オーディオセッションが無いアプリも、プロセス名を登録すれば候補に出せます（表示はアプリ名寄り。SYNCROOM 本体は除外、ChatTool は可）
+- **追加プロセス…:** オーディオセッションが無いアプリも、プロセス名を登録すれば候補に出せます（表示はアプリ名寄り。SYNCROOM 本体は除外、ChatTool は可）
 
 ### 選んではいけないもの（デバイス指定時）
 
