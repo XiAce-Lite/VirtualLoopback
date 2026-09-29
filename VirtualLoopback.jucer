@@ -7,13 +7,23 @@
               pluginCode="VLbk" pluginVST3Category="Instrument" pluginName="VirtualLoopback"
               pluginDesc="PC&#20877;&#29983;&#38899;&#12398;&#12523;&#12540;&#12503;&#12496;&#12483;&#12463;&#21462;&#12426;&#36796;&#12415;&#65288;WASAPI / Core Audio Tap&#65289;"
               pluginAUMainType="'aumu'" pluginVSTCategory="kPlugCategSynth"
-              pluginFormats="buildVST3,buildAU,buildStandalone" version="1.0.1">
+              pluginFormats="buildVST3,buildAU,buildStandalone" version="1.1.0">
   <MAINGROUP id="VLMain" name="VirtualLoopback">
     <GROUP id="{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}" name="Source">
       <FILE id="VLCapH" name="WasapiLoopbackCapture.h" compile="0" resource="0"
             file="Source/WasapiLoopbackCapture.h"/>
       <FILE id="VLCapC" name="WasapiLoopbackCapture.cpp" compile="1" resource="0"
             file="Source/WasapiLoopbackCapture.cpp"/>
+      <FILE id="VLAllowH" name="AppProcessAllowlist.h" compile="0" resource="0"
+            file="Source/AppProcessAllowlist.h"/>
+      <FILE id="VLAllowC" name="AppProcessAllowlist.cpp" compile="1" resource="0"
+            file="Source/AppProcessAllowlist.cpp"/>
+      <FILE id="VLAllowDlgH" name="ProcessAllowlistDialog.h" compile="0" resource="0"
+            file="Source/ProcessAllowlistDialog.h"/>
+      <FILE id="VLAllowDlgC" name="ProcessAllowlistDialog.cpp" compile="1" resource="0"
+            file="Source/ProcessAllowlistDialog.cpp"/>
+      <FILE id="VLUiColours" name="UiColours.h" compile="0" resource="0"
+            file="Source/UiColours.h"/>
       <FILE id="VLMacH" name="CoreAudioTapCapture.h" compile="0" resource="0"
             file="Source/CoreAudioTapCapture.h"/>
       <FILE id="VLMacC" name="CoreAudioTapCapture.mm" compile="1" resource="0"

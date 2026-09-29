@@ -18,12 +18,15 @@ private:
     void timerCallback() override;
     void rebuildDeviceList();
     void updateStatus();
+    void openAllowlistDialog();
 
     VirtualLoopbackAudioProcessor& processor;
+    std::unique_ptr<juce::LookAndFeel> volumeLookAndFeel;
 
     juce::ComboBox deviceBox;
     juce::TextButton refreshButton;
     juce::TextButton restartButton;
+    juce::TextButton allowlistButton;
     juce::ToggleButton captureToggle;
     juce::ToggleButton muteToggle;
     juce::Slider volumeSlider;
@@ -35,6 +38,7 @@ private:
 
     juce::Rectangle<int> meterBounds;
     float meterLevel = 0.0f;
+    int captureRetryCounter = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VirtualLoopbackAudioProcessorEditor)
 };

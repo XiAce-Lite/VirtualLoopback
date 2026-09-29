@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.22)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "14.2" CACHE STRING "Minimum macOS version" FORCE)
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Universal macOS build" FORCE)
 
-project(VirtualLoopback VERSION 1.0.1 LANGUAGES C CXX)
+project(VirtualLoopback VERSION 1.1.0 LANGUAGES C CXX)
 
 if(APPLE)
     enable_language(OBJC OBJCXX)
@@ -68,6 +68,8 @@ set(VL_SOURCES
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/WasapiLoopbackCapture.cpp
+    Source/AppProcessAllowlist.cpp
+    Source/ProcessAllowlistDialog.cpp
 )
 
 if(APPLE)

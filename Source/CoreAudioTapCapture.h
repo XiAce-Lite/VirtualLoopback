@@ -14,6 +14,8 @@ class CoreAudioTapCapture
 {
 public:
     static constexpr const char* systemMixId = "__system__";
+    static constexpr const char* appIdPrefix = "__app__:";
+    static constexpr const char* pidIdPrefix = "__pid__:";
 
     struct DeviceInfo
     {
@@ -27,8 +29,10 @@ public:
 
     static juce::Array<DeviceInfo> getRenderDevices();
 
-    /** Start capturing. Empty ID or systemMixId = global system mix (DAW excluded).
-        Other IDs are Core Audio output-device UIDs.
+    /** Start capturing.
+        - Empty / systemMixId: global system mix (DAW / SYNCROOM excluded)
+        - appIdPrefix + bundleId, or pidIdPrefix + pid: that process only
+        - otherwise: Core Audio output-device UID
     */
     bool start (const juce::String& deviceId);
 

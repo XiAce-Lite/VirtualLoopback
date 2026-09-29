@@ -7,10 +7,15 @@
 #if JUCE_WINDOWS
 
 //==============================================================================
-/** Captures the mix playing on a Windows render (playback) endpoint via WASAPI loopback. */
+/** Captures Windows playback via WASAPI endpoint loopback or Application Loopback
+    (per-process, Windows 10 build 19041+). */
 class WasapiLoopbackCapture
 {
 public:
+    static constexpr const char* systemMixId = "__system__";
+    static constexpr const char* appIdPrefix = "__app__:";
+    static constexpr const char* pidIdPrefix = "__pid__:";
+
     struct DeviceInfo
     {
         juce::String id;
@@ -23,7 +28,11 @@ public:
 
     static juce::Array<DeviceInfo> getRenderDevices();
 
-    /** Start capturing from the given IMMDevice ID. Empty ID = default render device. */
+    /** Start capturing.
+        - Empty / systemMixId: default render endpoint loopback (system mix)
+        - pidIdPrefix + pid, or appIdPrefix + exe key: Application Loopback
+        - otherwise: IMMDevice ID for endpoint loopback
+    */
     bool start (const juce::String& deviceId);
 
     void stop();
@@ -53,9 +62,12 @@ public:
 private:
     void captureThreadFn();
     bool openDevice (const juce::String& deviceId);
+    bool openEndpointLoopback (const juce::String& deviceId);
+    bool openProcessLoopback (juce::uint32 processId);
     void closeDevice();
     void pushCapturedFrames (const float* interleaved, int numFrames, int numCh);
     void discardOldestFramesUnlocked (int numFrames);
+    void setError (const juce::String& text);
 
     std::atomic<bool> running { false };
     std::atomic<bool> shouldStop { false };
