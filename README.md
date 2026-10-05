@@ -1,6 +1,6 @@
 # VirtualLoopback
 
-Windows の PC 再生音（ブラウザ・メディアプレイヤーなど）を、**仮想ケーブルなし**で DAW のトラックに取り込むプラグインです。
+PC 再生音（ブラウザ・メディアプレイヤーなど）を、**仮想ケーブルなし**で DAW のトラックに取り込むプラグインです。
 
 - **Windows:** **WASAPI ループバック**（VB-Cable / VoiceMeeter 不要）
 - **Mac:** **Core Audio Process Tap**（BlackHole / Rogue Amoeba Loopback 不要、macOS 14.2 以降）
